@@ -1,0 +1,68 @@
+# Tiles R Us
+
+Warframe overlay that reads the current Disruption or Survival layout and grades it against a local catalog of known rooms.
+
+## Install from GitHub
+
+```powershell
+irm https://raw.githubusercontent.com/hoeslovevid/Tiles-R-Us/main/scripts/bootstrap.ps1 | iex
+```
+
+That downloads the latest GitHub Release if one exists, otherwise it installs from `main` and uses Python. It creates Start Menu and desktop shortcuts, and registers an uninstaller in **Apps & Features**.
+
+From a clone of this folder:
+
+```bat
+scripts\install.cmd
+```
+
+Tagged releases also attach `TilesRUs-Setup.exe` via GitHub Actions.
+
+## Uninstall
+
+- **Apps & Features** → Tiles R Us → Uninstall
+- Or run `scripts\uninstall.cmd` from this repo
+- Or, after a GitHub install: `%LocalAppData%\TilesRUs\uninstall.ps1`
+
+Add `-KeepConfig` to leave `config.json` behind.
+
+## Run from source (no install)
+
+1. Install [Python 3.11+](https://www.python.org/downloads/) with **tcl/tk**.
+2. Start Warframe first (the log file is recreated on launch).
+3. Double-click `run.bat`, or `python main.py`.
+
+No pip packages are required to run from source.
+
+## Report a bug
+
+In the app: **Help → Report a bug…** or the **Report a bug** button. That opens a GitHub issue with diagnostics (mission, rooms, grade, OS). It copies the full report to the clipboard and **does not** attach `EE.log` — that file can contain your email and IP.
+
+## How it works
+
+The app tails `%LocalAppData%\Warframe\EE.log`. It still reads mission type, node, tileset, seed, and Disruption round events from that log.
+
+Tile *names* were hidden by Digital Extremes in Update 37. If the log no longer dumps rooms, use one of these:
+
+- **Mark rooms you see** in the right-hand picker (Kappa, Ur, Apollo, Olympus, Ophelia, Zabala, Assur).
+- Take an in-game **F6** screenshot. If the JPEG still embeds the current tile path, the app picks it up from `Pictures\Warframe`.
+- Click **Demo: Disruption** / **Demo: Survival** to see a graded layout without loading a mission.
+
+Toggle **Reject** on rooms you personally abort. Those choices are saved in `config.json`.
+
+## Grading
+
+| Mode | What gets graded |
+|---|---|
+| Disruption | The two main combat rooms (Kappa/Ur numbers, Apollo names, Olympus camp rooms), plus optional known pairs like Four+Six |
+| Survival | Must-have farm rooms: Botany Lab (Ophelia / polymer), Infested Reactor (Zabala / nanospores), Connector Four (Assur) |
+
+Catalogs live in `data/catalogs/`. Edit scores, add rooms, or add `known_layouts` there. Newly seen tile names are appended to `discovered_tiles.json`.
+
+## Overlay
+
+Drag the small overlay anywhere. **Lock overlay** makes it click-through so it will not steal game clicks.
+
+## Safety
+
+This only reads the engine log and your own screenshots. It does not inject into Warframe or read process memory. `EE.log` can contain account identifiers — keep it local.

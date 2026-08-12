@@ -1,0 +1,78 @@
+name: Build Windows installer
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version label (for example 1.0.0). Ignored on tags."
+        required: false
+        default: "1.0.0"
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Resolve version
+        id: version
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF_TYPE -eq "tag") {
+            $ver = $env:GITHUB_REF_NAME.TrimStart("v")
+          } else {
+            $ver = "${{ github.event.inputs.version }}"
+            if (-not $ver) { $ver = "1.0.0" }
+          }
+          echo "version=$ver" >> $env:GITHUB_OUTPUT
+
+      - name: Install PyInstaller
+        run: python -m pip install --upgrade pip pyinstaller
+
+      - name: Build app
+        run: python -m PyInstaller --noconfirm --clean TilesRUs.spec
+
+      - name: Stage zip
+        shell: pwsh
+        run: |
+          $out = "dist/TilesRUs"
+          Copy-Item scripts/uninstall.ps1 $out -Force
+          Copy-Item README.md $out -Force
+          Compress-Archive -Path "$out\*" -DestinationPath dist/TilesRUs-windows.zip -Force
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Build Setup.exe
+        shell: pwsh
+        run: |
+          $iss = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          & $iss /DMyAppVersion="${{ steps.version.outputs.version }}" installer\TilesRUs.iss
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: |
+            dist/TilesRUs-windows.zip
+            installer/Output/TilesRUs-Setup.exe
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Tiles R Us ${{ steps.version.outputs.version }}
+          files: |
+            dist/TilesRUs-windows.zip
+            installer/Output/TilesRUs-Setup.exe
+          generate_release_notes: true

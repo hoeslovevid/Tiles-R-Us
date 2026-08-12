@@ -1,0 +1,34 @@
+name: Bug report
+about: Something in Tiles R Us did not work as expected
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What did you expect, and what actually happened?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open the app
+        2. Queue a Disruption mission
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: Paste the report from Help → Report a bug (or the Copy report button). Do not paste EE.log — it can contain your email and IP.
+      render: text
+    validations:
+      required: false
+  - type: markdown
+    attributes:
+      value: |
+        Do **not** attach `EE.log`. That file can contain your email address and IP.

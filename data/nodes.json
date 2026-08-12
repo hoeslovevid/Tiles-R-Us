@@ -1,0 +1,92 @@
+{
+  "SolNode30": {
+    "name": "Olympus (Mars)",
+    "kind": "disruption",
+    "tileset": "Grineer Settlement",
+    "catalog_key": "grineer_settlement_disruption"
+  },
+  "SolNode177": {
+    "name": "Kappa (Sedna)",
+    "kind": "disruption",
+    "tileset": "Grineer Galleon",
+    "catalog_key": "grineer_galleon_disruption"
+  },
+  "SolNode308": {
+    "name": "Apollo (Lua)",
+    "kind": "disruption",
+    "tileset": "Orokin Moon",
+    "catalog_key": "orokin_moon_disruption"
+  },
+  "ClanNode16": {
+    "name": "Ur (Uranus)",
+    "kind": "disruption",
+    "tileset": "Grineer Galleon",
+    "catalog_key": "grineer_galleon_disruption"
+  },
+  "SolNode99": {
+    "name": "Ganymede (Jupiter)",
+    "kind": "disruption",
+    "tileset": "Corpus Gas City",
+    "catalog_key": "corpus_gas_city_disruption"
+  },
+  "SolNode129": {
+    "name": "Laomedeia (Neptune)",
+    "kind": "disruption",
+    "tileset": "Corpus Ship",
+    "catalog_key": "corpus_ship_disruption"
+  },
+  "SolNode741": {
+    "name": "Tamu (Kuva Fortress)",
+    "kind": "disruption",
+    "tileset": "Kuva Fortress",
+    "catalog_key": "kuva_fortress_disruption"
+  },
+  "SolNode706": {
+    "name": "Armatus (Deimos)",
+    "kind": "disruption",
+    "tileset": "Albrecht's Laboratories",
+    "catalog_key": "albrecht_disruption"
+  },
+  "SolNode69": {
+    "name": "Ophelia (Uranus)",
+    "kind": "survival",
+    "tileset": "Grineer Sealab",
+    "catalog_key": "grineer_sealab_survival"
+  },
+  "ClanNode17": {
+    "name": "Assur (Uranus)",
+    "kind": "survival",
+    "tileset": "Grineer Galleon",
+    "catalog_key": "grineer_galleon_survival"
+  },
+  "ClanNode24": {
+    "name": "Zabala (Eris)",
+    "kind": "survival",
+    "tileset": "Infested Ship",
+    "catalog_key": "infested_ship_survival"
+  },
+  "SolNode18": {
+    "name": "Io (Jupiter)",
+    "kind": "survival",
+    "tileset": "Corpus Gas City",
+    "catalog_key": "corpus_gas_city_survival"
+  },
+  "SolNode24": {
+    "name": "Titan (Saturn)",
+    "kind": "survival",
+    "tileset": "Grineer Galleon",
+    "catalog_key": "grineer_galleon_survival"
+  },
+  "SolNode45": {
+    "name": "Ara (Mars)",
+    "kind": "survival",
+    "tileset": "Grineer Settlement",
+    "catalog_key": "grineer_galleon_survival"
+  },
+  "ClanNode0": {
+    "name": "Gabii (Ceres)",
+    "kind": "survival",
+    "tileset": "Grineer Shipyard",
+    "catalog_key": "grineer_galleon_survival"
+  }
+}

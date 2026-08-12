@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+*.log
+config.json
+discovered_tiles.json
+.venv/
+venv/
+.env
+*.pyc
+build/
+dist/
+installer/Output/

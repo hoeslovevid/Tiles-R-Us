@@ -1,0 +1,67 @@
+{
+  "catalogs": [
+    {
+      "key": "grineer_sealab_survival",
+      "kind": "survival",
+      "tileset": "Grineer Sealab",
+      "title": "Ophelia — Polymer farm",
+      "notes": "Stay if Botany Lab spawned. That room is the polymer-farm tile.",
+      "rooms": [
+        {
+          "id": "BotanyLab",
+          "display": "Botany Lab",
+          "match": "GrineerOceanIntermediateBotanyLab",
+          "score": 8,
+          "must_have": true,
+          "notes": "Polymer bundle farm room."
+        }
+      ],
+      "known_layouts": []
+    },
+    {
+      "key": "infested_ship_survival",
+      "kind": "survival",
+      "tileset": "Infested Ship",
+      "title": "Zabala — Nanospores farm",
+      "notes": "Stay if the Infested Reactor tile spawned.",
+      "rooms": [
+        {
+          "id": "InfestedReactor",
+          "display": "Infested Reactor",
+          "match": "InfestedReactor",
+          "score": 8,
+          "must_have": true,
+          "notes": "Nanospores farm room."
+        }
+      ],
+      "known_layouts": []
+    },
+    {
+      "key": "grineer_galleon_survival",
+      "kind": "survival",
+      "tileset": "Grineer Galleon",
+      "title": "Assur / Galleon Survival",
+      "notes": "Assur farmers often look for Connector Four. Mark it if you see it.",
+      "rooms": [
+        {
+          "id": "ConnectorFour",
+          "display": "Connector Four",
+          "match": "GrnConnectorFour",
+          "score": 6,
+          "must_have": true,
+          "notes": "Compact connector used as a camp / loot room."
+        }
+      ],
+      "known_layouts": []
+    },
+    {
+      "key": "corpus_gas_city_survival",
+      "kind": "survival",
+      "tileset": "Corpus Gas City",
+      "title": "Io / Gas City Survival",
+      "notes": "No must-have farm room yet. Grade uses compactness and any rooms you add.",
+      "rooms": [],
+      "known_layouts": []
+    }
+  ]
+}
