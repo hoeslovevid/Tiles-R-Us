@@ -4,7 +4,7 @@ from __future__ import annotations
 
 APP_NAME = "Tiles R Us"
 APP_ID = "TilesRUs"
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 PUBLISHER = "Tiles R Us"
 GITHUB_REPO = "hoeslovevid/Tiles-R-Us"
 

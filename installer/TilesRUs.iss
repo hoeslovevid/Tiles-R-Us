@@ -1,6 +1,6 @@
 #define MyAppName "Tiles R Us"
 #ifndef MyAppVersion
-  #define MyAppVersion "1.0.0"
+  #define MyAppVersion "1.1.0"
 #endif
 #define MyAppPublisher "Tiles R Us"
 #define MyAppId "TilesRUs"
@@ -32,6 +32,11 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription:
 [Files]
 Source: "..\dist\TilesRUs\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\scripts\uninstall.ps1"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\tilesrus.cmd"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\tiles-r-us.cmd"; DestDir: "{app}"; Flags: ignoreversion
+
+[Registry]
+Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "Path"; ValueData: "{olddata};{app}"; Flags: preservestringtype; Check: NeedsAddPath(ExpandConstant('{app}'))
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
@@ -40,3 +45,16 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
+
+[Code]
+function NeedsAddPath(Param: string): boolean;
+var
+  OrigPath: string;
+begin
+  if not RegQueryStringValue(HKEY_CURRENT_USER, 'Environment', 'Path', OrigPath) then
+  begin
+    Result := True;
+    exit;
+  end;
+  Result := Pos(';' + Param + ';', ';' + OrigPath + ';') = 0;
+end;

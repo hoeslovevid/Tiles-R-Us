@@ -3,7 +3,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from tile_reader.app import run
+from tile_reader.cli import main
 
 if __name__ == "__main__":
-    run()
+    raise SystemExit(main())

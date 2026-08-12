@@ -38,6 +38,18 @@ function Get-Python {
     return $null
 }
 
+function Add-UserPath([string]$Dir) {
+    $current = [Environment]::GetEnvironmentVariable("Path", "User")
+    if (-not $current) { $current = "" }
+    $parts = @($current -split ';' | Where-Object { $_ })
+    if ($parts -contains $Dir) { return }
+    $updated = if ($current.Trim()) { "$current;$Dir" } else { $Dir }
+    [Environment]::SetEnvironmentVariable("Path", $updated, "User")
+    if ($env:Path -notlike "*$Dir*") {
+        $env:Path = "$env:Path;$Dir"
+    }
+}
+
 function New-Shortcut([string]$Path, [string]$Target, [string]$WorkingDir, [string]$Arguments = "") {
     $shell = New-Object -ComObject WScript.Shell
     $shortcut = $shell.CreateShortcut($Path)
@@ -51,7 +63,7 @@ function New-Shortcut([string]$Path, [string]$Target, [string]$WorkingDir, [stri
 function Register-Uninstall([string]$Dir, [string]$DisplayVersion, [string]$UninstallFile) {
     $reg = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\$AppId"
     New-Item -Path $reg -Force | Out-Null
-    $uninstall = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$UninstallFile`""
+    $uninstall = 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "{0}"' -f $UninstallFile
     Set-ItemProperty -Path $reg -Name "DisplayName" -Value $AppName
     Set-ItemProperty -Path $reg -Name "DisplayVersion" -Value $DisplayVersion
     Set-ItemProperty -Path $reg -Name "Publisher" -Value $Publisher
@@ -126,13 +138,13 @@ if (-not $FromSource -and -not $SourceDir) {
 
 New-Item -ItemType Directory -Path $dest -Force | Out-Null
 
-$displayVersion = "1.0.0"
+$displayVersion = "1.1.0"
 $installedKind = "source"
 
 if ($FromSource -or $SourceDir) {
     if (-not $SourceDir) { $SourceDir = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path }
     Write-Step "Installing from source: $SourceDir"
-    $copyNames = @("main.py", "run.bat", "README.md", "requirements.txt", "tile_reader", "data", "scripts")
+    $copyNames = @("main.py", "run.bat", "README.md", "requirements.txt", "tile_reader", "data", "scripts", "tilesrus.cmd", "tiles-r-us.cmd")
     foreach ($name in $copyNames) {
         $from = Join-Path $SourceDir $name
         if (Test-Path $from) {
@@ -152,7 +164,7 @@ if ($FromSource -or $SourceDir) {
         $installedKind = "release"
         Remove-Item $zip -Force -ErrorAction SilentlyContinue
     } else {
-        Write-Step "No GitHub Release zip found — downloading source from main"
+        Write-Step "No GitHub Release zip found - downloading source from main"
         $sourceUrl = "https://github.com/$Repo/archive/refs/heads/main.zip"
         Invoke-WebRequest -Uri $sourceUrl -OutFile $zip -UseBasicParsing
         Install-FromZip -ZipPath $zip -Dest $dest
@@ -180,6 +192,14 @@ if ($uninstallSrc) {
 
 $exe = Join-Path $dest $ExeName
 $python = Get-Python
+$launcher = Join-Path $dest "tilesrus.cmd"
+if (-not (Test-Path $launcher)) {
+    $fromLauncher = Join-Path $PSScriptRoot "..\tilesrus.cmd"
+    if ($PSScriptRoot -and (Test-Path $fromLauncher)) {
+        Copy-Item $fromLauncher $launcher -Force
+        Copy-Item (Join-Path $PSScriptRoot "..\tiles-r-us.cmd") (Join-Path $dest "tiles-r-us.cmd") -Force -ErrorAction SilentlyContinue
+    }
+}
 $startMenu = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs"
 New-Item -ItemType Directory -Path $startMenu -Force | Out-Null
 $startShortcut = Join-Path $startMenu "$AppName.lnk"
@@ -194,13 +214,8 @@ if (Test-Path $exe) {
 } elseif ($python) {
     $main = Join-Path $dest "main.py"
     if (-not (Test-Path $main)) { throw "Install did not contain main.py or $ExeName." }
-    Write-Step "Creating shortcuts via Python ($python)"
-    $launcher = Join-Path $dest "TilesRUs.cmd"
-    @"
-@echo off
-cd /d "%~dp0"
-"$python" main.py
-"@ | Set-Content -Path $launcher -Encoding ASCII
+    Write-Step "Creating shortcuts via tilesrus.cmd"
+    if (-not (Test-Path $launcher)) { throw "tilesrus.cmd was missing from the install." }
     New-Shortcut -Path $startShortcut -Target $launcher -WorkingDir $dest
     if (-not $NoDesktopShortcut) {
         New-Shortcut -Path $desktopShortcut -Target $launcher -WorkingDir $dest
@@ -209,8 +224,12 @@ cd /d "%~dp0"
     throw "Python was not found and this install has no $ExeName. Install Python 3.11+ (with tcl/tk) or use a GitHub Release."
 }
 
+Write-Step "Adding $dest to your user PATH"
+Add-UserPath $dest
+
 Register-Uninstall -Dir $dest -DisplayVersion $displayVersion -UninstallFile $uninstallDest
 Write-Ok "Installed $AppName $displayVersion ($installedKind)"
-Write-Host "Start Menu shortcut created. Uninstall from Apps & Features or:"
-Write-Host "  powershell -ExecutionPolicy Bypass -File `"$uninstallDest`""
+Write-Host "Launch from a new terminal with:  tilesrus"
+Write-Host "Start Menu shortcut created. Uninstall from Apps and Features or:"
+Write-Host ('  powershell -ExecutionPolicy Bypass -File "{0}"' -f $uninstallDest)
 Write-Host ""

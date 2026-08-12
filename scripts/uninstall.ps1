@@ -37,8 +37,15 @@ foreach ($link in $shortcuts) {
     if (Test-Path $link) { Remove-Item $link -Force }
 }
 
-Write-Step "Removing Apps & Features entry"
+Write-Step "Removing Apps and Features entry"
 if (Test-Path $reg) { Remove-Item $reg -Recurse -Force }
+
+Write-Step "Removing install folder from user PATH"
+$userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+if ($userPath) {
+    $parts = @($userPath -split ';' | Where-Object { $_ -and ($_ -ne $installDir) })
+    [Environment]::SetEnvironmentVariable("Path", ($parts -join ";"), "User")
+}
 
 $keep = @()
 if ($KeepConfig) {

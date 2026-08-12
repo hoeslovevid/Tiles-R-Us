@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version label (for example 1.0.0). Ignored on tags."
+        description: "Version label (for example 1.1.0). Ignored on tags."
         required: false
-        default: "1.0.0"
+        default: "1.1.0"
 
 permissions:
   contents: write
@@ -32,7 +32,7 @@ jobs:
             $ver = $env:GITHUB_REF_NAME.TrimStart("v")
           } else {
             $ver = "${{ github.event.inputs.version }}"
-            if (-not $ver) { $ver = "1.0.0" }
+            if (-not $ver) { $ver = "1.1.0" }
           }
           echo "version=$ver" >> $env:GITHUB_OUTPUT
 
@@ -48,6 +48,8 @@ jobs:
           $out = "dist/TilesRUs"
           Copy-Item scripts/uninstall.ps1 $out -Force
           Copy-Item README.md $out -Force
+          Copy-Item tilesrus.cmd $out -Force
+          Copy-Item tiles-r-us.cmd $out -Force
           Compress-Archive -Path "$out\*" -DestinationPath dist/TilesRUs-windows.zip -Force
 
       - name: Install Inno Setup

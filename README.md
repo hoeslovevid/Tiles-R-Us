@@ -26,11 +26,27 @@ Tagged releases also attach `TilesRUs-Setup.exe` via GitHub Actions.
 
 Add `-KeepConfig` to leave `config.json` behind.
 
+## Launch from the console
+
+From this folder:
+
+```bat
+tilesrus
+```
+
+or:
+
+```bat
+python -m tile_reader
+```
+
+`tilesrus --help` and `tilesrus --version` work too. After install, `tilesrus` is on your PATH — open a **new** terminal and run it from anywhere.
+
 ## Run from source (no install)
 
 1. Install [Python 3.11+](https://www.python.org/downloads/) with **tcl/tk**.
 2. Start Warframe first (the log file is recreated on launch).
-3. Double-click `run.bat`, or `python main.py`.
+3. Double-click `run.bat`, or run `tilesrus` / `python -m tile_reader`.
 
 No pip packages are required to run from source.
 
