@@ -9,7 +9,6 @@ from .models import (
     Mission,
     MissionKind,
     Recommendation,
-    Tile,
 )
 
 
@@ -50,7 +49,7 @@ def grade_layout(
             store.remember_tile(catalog.key, tile.short_name)
 
     if mission.kind == MissionKind.SURVIVAL:
-        return _grade_survival(catalog, tiles, rejected_ids)
+        return _grade_survival(catalog, layout, rejected_ids)
     if mission.kind == MissionKind.DISRUPTION:
         return _grade_disruption(catalog, layout, rejected_ids)
     return GradeResult(
@@ -63,11 +62,12 @@ def grade_layout(
 
 def _grade_survival(
     catalog: Optional[Catalog],
-    tiles: list[Tile],
+    layout: Layout,
     rejected_ids: set[str],
 ) -> GradeResult:
     reasons: list[str] = []
     score = 0
+    tiles = layout.tiles
     names = [tile.short_name for tile in tiles]
     if catalog:
         must = [room for room in catalog.rooms if room.must_have]
@@ -99,6 +99,14 @@ def _grade_survival(
                 catalog_key=catalog.key,
             )
         if must and not found_must:
+            if not layout.complete:
+                return GradeResult(
+                    grade="?",
+                    score=score,
+                    recommendation=Recommendation.WAIT,
+                    reasons=["Waiting for the farm room to load…"] + reasons,
+                    catalog_key=catalog.key,
+                )
             return GradeResult(
                 grade="F",
                 score=score,
@@ -193,6 +201,22 @@ def _grade_disruption(
         elif hits == 1:
             score -= 1
             reasons.append("Only one catalog room identified — Disruption usually has two main rooms.")
+        if hits < 2 and not layout.complete and not matched_layout:
+            return GradeResult(
+                grade="?",
+                score=score,
+                recommendation=Recommendation.WAIT,
+                reasons=["Waiting for both Disruption rooms…"] + reasons,
+                catalog_key=catalog.key,
+            )
+
+    if not catalog and not layout.complete:
+        return GradeResult(
+            grade="?",
+            score=score,
+            recommendation=Recommendation.WAIT,
+            reasons=["Waiting for both Disruption rooms…"] + reasons,
+        )
 
     grade, rec = _band(score)
     if not reasons:

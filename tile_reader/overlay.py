@@ -21,10 +21,12 @@ class OverlayWindow:
         font_size: int = 16,
         x: int = 48,
         y: int = 48,
+        opacity: float = 0.92,
     ) -> None:
         self.on_move = on_move
         self.font_size = font_size
         self.locked = False
+        self.opacity = 1.0
         self._drag_x = 0
         self._drag_y = 0
 
@@ -32,58 +34,129 @@ class OverlayWindow:
         self.win.overrideredirect(True)
         self.win.attributes("-topmost", True)
         self.win.configure(bg=theme.BG)
-        self.win.geometry(f"460x150+{x}+{y}")
+        self.win.geometry(f"500x148+{x}+{y}")
 
-        self.frame = tk.Frame(self.win, bg=theme.PANEL, highlightthickness=1, highlightbackground=theme.GOLD_DIM)
-        self.frame.pack(fill="both", expand=True, padx=2, pady=2)
+        shell = tk.Frame(self.win, bg=theme.BORDER)
+        shell.pack(fill="both", expand=True)
+        self.accent = tk.Frame(shell, bg=theme.YELLOW, width=5)
+        self.accent.pack(side="left", fill="y")
+
+        self.frame = tk.Frame(shell, bg=theme.SURFACE)
+        self.frame.pack(side="left", fill="both", expand=True)
+
+        inner = tk.Frame(self.frame, bg=theme.SURFACE)
+        inner.pack(fill="both", expand=True, padx=14, pady=12)
+
+        top = tk.Frame(inner, bg=theme.SURFACE)
+        top.pack(fill="x")
 
         self.grade = tk.Label(
-            self.frame,
+            top,
             text="?",
-            bg=theme.PANEL,
+            bg=theme.ELEVATED,
             fg=theme.GOLD,
-            font=("Segoe UI", 36, "bold"),
+            font=theme.font(32, "bold"),
             width=2,
+            padx=8,
+            pady=4,
         )
-        self.grade.pack(side="left", padx=(12, 8), pady=8)
+        self.grade.pack(side="left", padx=(0, 12))
 
-        right = tk.Frame(self.frame, bg=theme.PANEL)
-        right.pack(side="left", fill="both", expand=True, padx=(0, 12), pady=10)
+        copy = tk.Frame(top, bg=theme.SURFACE)
+        copy.pack(side="left", fill="both", expand=True)
 
-        self.rec = tk.Label(right, text="WAIT", bg=theme.PANEL, fg=theme.YELLOW, font=("Segoe UI", 14, "bold"), anchor="w")
-        self.rec.pack(fill="x")
-        self.mission = tk.Label(right, text="Waiting for mission", bg=theme.PANEL, fg=theme.TEXT, font=("Segoe UI", 11), anchor="w")
-        self.mission.pack(fill="x")
-        self.tiles = tk.Label(right, text="No rooms yet", bg=theme.PANEL, fg=theme.MUTED, font=("Segoe UI", 10), anchor="w")
+        rec_row = tk.Frame(copy, bg=theme.SURFACE)
+        rec_row.pack(fill="x")
+        self.rec = tk.Label(
+            rec_row,
+            text="WAIT",
+            bg=theme.WAIT_BG,
+            fg=theme.YELLOW,
+            font=theme.font(10, "bold"),
+            padx=8,
+            pady=2,
+        )
+        self.rec.pack(side="left")
+        self.handle = tk.Label(
+            rec_row,
+            text="⋮⋮  drag",
+            bg=theme.SURFACE,
+            fg=theme.MUTED,
+            font=theme.font(8),
+        )
+        self.handle.pack(side="right")
+
+        self.mission = tk.Label(
+            copy,
+            text="Waiting for mission",
+            bg=theme.SURFACE,
+            fg=theme.TEXT,
+            font=theme.font(12, "bold"),
+            anchor="w",
+        )
+        self.mission.pack(fill="x", pady=(6, 0))
+        self.tiles = tk.Label(
+            copy,
+            text="No rooms yet",
+            bg=theme.SURFACE,
+            fg=theme.MUTED,
+            font=theme.font(10),
+            anchor="w",
+        )
         self.tiles.pack(fill="x")
-        self.detail = tk.Label(right, text="Start Warframe, then queue Disruption or Survival.", bg=theme.PANEL, fg=theme.MUTED, font=("Segoe UI", 9), anchor="w")
-        self.detail.pack(fill="x")
+        self.detail = tk.Label(
+            inner,
+            text="Start Warframe, then queue Disruption or Survival.",
+            bg=theme.SURFACE,
+            fg=theme.MUTED,
+            font=theme.font(9),
+            anchor="w",
+        )
+        self.detail.pack(fill="x", pady=(8, 0))
 
-        for widget in (self.win, self.frame, self.grade, right, self.rec, self.mission, self.tiles, self.detail):
+        self._bind_drag(self.win, shell, self.accent, self.frame, inner, top, copy, rec_row)
+        self._bind_drag(self.grade, self.rec, self.handle, self.mission, self.tiles, self.detail)
+        self.set_opacity(opacity)
+
+    def _bind_drag(self, *widgets: tk.Widget) -> None:
+        for widget in widgets:
             widget.bind("<ButtonPress-1>", self._start_move)
             widget.bind("<B1-Motion>", self._do_move)
             widget.bind("<ButtonRelease-1>", self._stop_move)
 
+    def set_opacity(self, alpha: float) -> None:
+        self.opacity = max(0.25, min(1.0, float(alpha)))
+        try:
+            self.win.attributes("-alpha", self.opacity)
+        except tk.TclError:
+            pass
+
     def set_locked(self, locked: bool) -> None:
         self.locked = locked
+        self.handle.configure(text="" if locked else "⋮⋮  drag")
         _set_clickthrough(self.win, locked)
+        self.set_opacity(self.opacity)
 
     def set_visible(self, visible: bool) -> None:
         if visible:
             self.win.deiconify()
             self.win.attributes("-topmost", True)
+            self.set_opacity(self.opacity)
         else:
             self.win.withdraw()
 
     def update_view(self, mission: Mission, grade: GradeResult, tiles: list[str], status: str) -> None:
-        self.grade.configure(text=grade.grade, fg=theme.GRADE_COLORS.get(grade.grade, theme.MUTED))
         rec = grade.recommendation.value if isinstance(grade.recommendation, Recommendation) else str(grade.recommendation)
-        self.rec.configure(text=rec, fg=theme.REC_COLORS.get(rec, theme.YELLOW))
+        rec_fg = theme.REC_COLORS.get(rec, theme.YELLOW)
+        rec_bg = theme.REC_BG.get(rec, theme.WAIT_BG)
+        self.accent.configure(bg=rec_fg)
+        self.grade.configure(text=grade.grade, fg=theme.GRADE_COLORS.get(grade.grade, theme.MUTED))
+        self.rec.configure(text=rec, fg=rec_fg, bg=rec_bg)
         name = mission.display_name or mission.node_id or "Unknown node"
         kind = mission.kind.value.title() if mission.kind else "Mission"
         tileset = mission.tileset or "Unknown tileset"
-        self.mission.configure(text=f"{name}  ·  {kind}  ·  {tileset}")
-        self.tiles.configure(text=" + ".join(tiles[:6]) if tiles else "No rooms yet")
+        self.mission.configure(text=f"{name}  ·  {kind}")
+        self.tiles.configure(text=f"{tileset}   {' + '.join(tiles[:6]) if tiles else 'No rooms yet'}")
         self.detail.configure(text=grade.reasons[0] if grade.reasons else status)
 
     def _start_move(self, event: tk.Event) -> None:  # type: ignore[type-arg]

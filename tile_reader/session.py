@@ -108,11 +108,13 @@ class SessionController:
         if kind == "layout_complete":
             session.layout.complete = True
             self._regrade()
+            self.store.flush_discovered()
             return True
 
         if kind == "mission_end":
             session.in_mission = False
             session.status = "Back in orbiter" if event.payload.get("reason") == "orbiter" else "Mission aborted"
+            self.store.flush_discovered()
             return True
 
         if kind.startswith("disruption_"):
@@ -122,13 +124,14 @@ class SessionController:
 
     def add_tile(self, tile: Tile, regrade: bool = True) -> None:
         existing = {item.path for item in self.session.layout.tiles}
-        if tile.path in existing:
+        if tile.path in existing or tile.short_name in {item.short_name for item in self.session.layout.tiles}:
             return
         self.session.layout.tiles.append(tile)
         if tile.source != "log":
             self.session.layout.source = tile.source
         if regrade:
             self._regrade()
+            self._maybe_complete_layout()
 
     def set_manual_tiles(self, short_names: list[str]) -> None:
         self.session.layout.tiles = [
@@ -218,6 +221,18 @@ class SessionController:
             self.session.status = "Layout partial — mark remaining rooms"
         else:
             self.session.status = f"{mission.kind.value.title()} loaded — waiting for rooms"
+
+    def _maybe_complete_layout(self) -> None:
+        mission = self.session.mission
+        catalog = self.store.catalog_for(mission.node_id, mission.kind, mission.level_override)
+        names = self.session.layout.intermediate_names()
+        if mission.kind == MissionKind.DISRUPTION and catalog:
+            hits = sum(1 for room in catalog.rooms if any((room.match or room.id).lower() in name.lower() for name in names))
+            if hits >= 2:
+                self.session.layout.complete = True
+        elif mission.kind == MissionKind.SURVIVAL and catalog:
+            if any(room.must_have and any((room.match or room.id).lower() in name.lower() for name in names) for room in catalog.rooms):
+                self.session.layout.complete = True
 
     def _handle_disruption(self, event: LogEvent) -> bool:
         session = self.session

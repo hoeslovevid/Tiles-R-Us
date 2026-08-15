@@ -1,6 +1,6 @@
 #define MyAppName "Tiles R Us"
 #ifndef MyAppVersion
-  #define MyAppVersion "1.2.0"
+  #define MyAppVersion "1.3.0"
 #endif
 #define MyAppPublisher "Tiles R Us"
 #define MyAppId "TilesRUs"

@@ -26,6 +26,12 @@ TILE_ROLE_RE = re.compile(
     re.I,
 )
 LAYER_RE = re.compile(r"Layer\s+(/Lotus/Levels/\S+)", re.I)
+HOST_REGION_RE = re.compile(
+    r"HostRegion:\s*added layer\s+\d+,\s*level=(/Lotus/Levels/[^\s,]+)",
+    re.I,
+)
+LEVEL_COLON_RE = re.compile(r"Sys \[Info\]:\s*Level:\s*(/Lotus/Levels/[^\s,]+)", re.I)
+GAME_LEVEL_RE = re.compile(r"Game \[Info\]:\s*Level=(/Lotus/Levels/[^\s,]+)", re.I)
 OPEN_LEVEL_RE = re.compile(r"OpenLevel\s*-\s*(/Lotus/\S+)", re.I)
 CLIENT_LOADED_RE = re.compile(r'Client loaded \{"name":"([^"]+)"')
 ABORT_RE = re.compile(r"Abort:\s*host/no session", re.I)
@@ -46,6 +52,47 @@ ORBITER_MARKERS = (
     "ServerFramework:OpenLevel - /Lotus/Levels/Proc/PlayerShip",
 )
 
+SKIP_TILE_HINTS = (
+    "/proc/",
+    "playership",
+    "backdrops",
+    "skybox",
+    "/lore/",
+    "/interface/",
+    "clandojo",
+    "hub/",
+)
+
+INTERESTING_NEEDLES = (
+    "MissionInfo",
+    "launching level",
+    "Mission name:",
+    "generating layout",
+    "Layer ",
+    "HostRegion: added layer",
+    "Sys [Info]: Level:",
+    "Game [Info]: Level=",
+    "OpenLevel",
+    "PlayerShip",
+    "SentientArtifact",
+    "Abort:",
+    "NemesisGenerator",
+    "ModeState",
+    "S: /Lotus/",
+    "C: /Lotus/",
+    "I: /Lotus/",
+    "O: /Lotus/",
+    "E: /Lotus/",
+    "D: /Lotus/",
+    "S:/Lotus/",
+    "C:/Lotus/",
+    "I:/Lotus/",
+    "O:/Lotus/",
+    "E:/Lotus/",
+    "D:/Lotus/",
+    ":/Lotus/Levels/",
+)
+
 
 @dataclass
 class LogEvent:
@@ -61,6 +108,34 @@ class LogEvent:
 def parse_timestamp(line: str) -> float:
     match = TIMESTAMP_RE.match(line)
     return float(match.group(1)) if match else 0.0
+
+
+def _line_is_interesting(line: str) -> bool:
+    return any(needle in line for needle in INTERESTING_NEEDLES)
+
+
+def _should_skip_tile_path(path: str) -> bool:
+    lower = path.lower()
+    if lower.endswith(".lp"):
+        return True
+    return any(hint in lower for hint in SKIP_TILE_HINTS)
+
+
+def _infer_tile_role(role: str, path: str) -> str:
+    if role and role not in {"Layer"}:
+        return role
+    lower = path.lower()
+    if "intermediate" in lower or "moonint" in lower:
+        return "I"
+    if "spawn" in lower:
+        return "S"
+    if "connector" in lower:
+        return "C"
+    if "exit" in lower or "extract" in lower:
+        return "E"
+    if "objective" in lower:
+        return "O"
+    return role or "Layer"
 
 
 class LineParser:
@@ -92,6 +167,9 @@ class LineParser:
                 mission = self._mission_from_json(blob)
                 if mission:
                     events.append(LogEvent("mission_info", ts, {"mission": mission}))
+            return events
+
+        if not _line_is_interesting(line):
             return events
 
         if "with MissionInfo:" in line:
@@ -144,41 +222,27 @@ class LineParser:
                 )
             )
 
-        role = TILE_ROLE_RE.search(line)
-        if role:
-            path = role.group(2).rstrip(".,;")
-            events.append(
-                LogEvent(
-                    "tile",
-                    ts,
-                    {
-                        "tile": Tile(
-                            role=role.group(1),
-                            path=path,
-                            short_name=short_tile_name(path),
-                            source="log",
-                        )
-                    },
-                )
-            )
+        skip_tiles = "ResourceLoader" in line
+        if not skip_tiles:
+            role = TILE_ROLE_RE.search(line)
+            if role:
+                self._add_tile_event(events, ts, role.group(1), role.group(2), "log")
 
-        layer = LAYER_RE.search(line)
-        if layer:
-            path = layer.group(1).rstrip(".,;")
-            events.append(
-                LogEvent(
-                    "tile",
-                    ts,
-                    {
-                        "tile": Tile(
-                            role="Layer",
-                            path=path,
-                            short_name=short_tile_name(path),
-                            source="log",
-                        )
-                    },
-                )
-            )
+            layer = LAYER_RE.search(line)
+            if layer:
+                self._add_tile_event(events, ts, "Layer", layer.group(1), "log")
+
+            host_region = HOST_REGION_RE.search(line)
+            if host_region:
+                self._add_tile_event(events, ts, "Layer", host_region.group(1), "log")
+
+            level_colon = LEVEL_COLON_RE.search(line)
+            if level_colon:
+                self._add_tile_event(events, ts, "Layer", level_colon.group(1), "log")
+
+            game_level = GAME_LEVEL_RE.search(line)
+            if game_level:
+                self._add_tile_event(events, ts, "Layer", game_level.group(1), "log")
 
         if "Layer /Lotus/Levels/Backdrops" in line or "Sb: /Lotus/Levels/Backdrops" in line:
             events.append(LogEvent("layout_complete", ts, {}))
@@ -215,6 +279,25 @@ class LineParser:
             events.append(LogEvent("disruption_total", ts, {"total": total}))
 
         return events
+
+    def _add_tile_event(self, events: list[LogEvent], ts: float, role: str, path: str, source: str) -> None:
+        path = path.rstrip(".,;")
+        if _should_skip_tile_path(path):
+            return
+        events.append(
+            LogEvent(
+                "tile",
+                ts,
+                {
+                    "tile": Tile(
+                        role=_infer_tile_role(role, path),
+                        path=path,
+                        short_name=short_tile_name(path),
+                        source=source,
+                    )
+                },
+            )
+        )
 
     def _mission_from_json(self, blob: str) -> Optional[Mission]:
         try:

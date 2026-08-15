@@ -19,6 +19,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "x": 48,
         "y": 48,
         "font_size": 16,
+        "opacity": 0.92,
     },
     "rejected_tiles": {
         "grineer_galleon_disruption": [],

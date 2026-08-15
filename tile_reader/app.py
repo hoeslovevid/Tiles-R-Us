@@ -3,7 +3,7 @@ from __future__ import annotations
 import queue
 import tkinter as tk
 from pathlib import Path
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, ttk
 from typing import Any, Optional
 
 from . import theme
@@ -31,14 +31,23 @@ class TileReaderApp:
         self.watcher: Optional[LogWatcher] = None
         self.shots: Optional[ScreenshotWatcher] = None
         self.room_vars: dict[str, tk.BooleanVar] = {}
+        self._picker_key = None
+        self._picker_force = True
+        self._ignore_picker = False
+        self._reason_key = None
+        self._tile_key = None
+        self._opacity_save_job: Optional[str] = None
+        self.overlay: Optional[OverlayWindow] = None
 
         self._build()
+        opacity = float(self.cfg["overlay"].get("opacity", 0.92))
         self.overlay = OverlayWindow(
             root,
             on_move=self._save_overlay_pos,
             font_size=int(self.cfg["overlay"].get("font_size", 16)),
             x=int(self.cfg["overlay"].get("x", 48)),
             y=int(self.cfg["overlay"].get("y", 48)),
+            opacity=opacity,
         )
         if not self.cfg["overlay"].get("visible", True):
             self.overlay.set_visible(False)
@@ -47,14 +56,15 @@ class TileReaderApp:
             self.overlay.set_locked(True)
 
         self._start_watchers()
-        self.root.after(50, self._drain)
+        self.root.after(16, self._drain)
         self._refresh()
 
     def _build(self) -> None:
+        theme.apply(self.root)
         self.root.title(f"{APP_NAME} {VERSION}")
-        self.root.geometry("980x720")
-        self.root.configure(bg=theme.BG)
-        self.root.minsize(860, 620)
+        self.root.geometry("1080x740")
+        self.root.minsize(920, 640)
+        theme.round_corners(self.root)
         if self.cfg.get("always_on_top"):
             self.root.attributes("-topmost", True)
 
@@ -67,164 +77,183 @@ class TileReaderApp:
         menubar.add_cascade(label="Help", menu=help_menu)
         self.root.config(menu=menubar)
 
-        header = tk.Frame(self.root, bg=theme.BG)
-        header.pack(fill="x", padx=18, pady=(16, 8))
-        tk.Label(
-            header,
-            text="TILES R US",
-            bg=theme.BG,
-            fg=theme.GOLD,
-            font=("Segoe UI", 18, "bold"),
-        ).pack(side="left")
-        self.status_var = tk.StringVar(value="Starting…")
-        tk.Label(header, textvariable=self.status_var, bg=theme.BG, fg=theme.MUTED, font=("Segoe UI", 10)).pack(
-            side="right"
+        chrome = tk.Frame(self.root, bg=theme.SURFACE, highlightthickness=1, highlightbackground=theme.BORDER)
+        chrome.pack(fill="x", padx=16, pady=(16, 0))
+        header = tk.Frame(chrome, bg=theme.SURFACE)
+        header.pack(fill="x", padx=16, pady=12)
+
+        brand = tk.Frame(header, bg=theme.SURFACE)
+        brand.pack(side="left")
+        tk.Label(brand, text=APP_NAME.upper(), bg=theme.SURFACE, fg=theme.GOLD, font=theme.font(18, "bold")).pack(
+            side="left"
         )
+        tk.Label(
+            brand,
+            text=f"v{VERSION}",
+            bg=theme.ELEVATED,
+            fg=theme.MUTED,
+            font=theme.font(8, "bold"),
+            padx=8,
+            pady=2,
+        ).pack(side="left", padx=(10, 0))
+
+        self.status_pill = tk.Label(
+            header,
+            text="Starting…",
+            bg=theme.ELEVATED,
+            fg=theme.MUTED,
+            font=theme.font(9, "bold"),
+            padx=12,
+            pady=5,
+        )
+        self.status_pill.pack(side="right")
+        self.status_var = tk.StringVar(value="Starting…")
 
         body = tk.Frame(self.root, bg=theme.BG)
-        body.pack(fill="both", expand=True, padx=18, pady=8)
+        body.pack(fill="both", expand=True, padx=16, pady=16)
         left = tk.Frame(body, bg=theme.BG)
-        left.pack(side="left", fill="both", expand=True, padx=(0, 10))
-        right = tk.Frame(body, bg=theme.BG, width=340)
+        left.pack(side="left", fill="both", expand=True, padx=(0, 12))
+        right = tk.Frame(body, bg=theme.BG, width=360)
         right.pack(side="right", fill="y")
         right.pack_propagate(False)
 
-        mission = self._card(left, "Mission", fill="x", pady=(0, 10))
-        self.mission_name = self._label(mission, "Waiting for a mission", 14, theme.TEXT, bold=True)
-        self.mission_meta = self._label(mission, "Queue Disruption or Survival while this app is running.", 10, theme.MUTED)
+        mission = theme.card(left, "Mission", fill="x", pady=(0, 12))
+        self.mission_name = tk.Label(mission, text="Waiting for a mission", bg=theme.SURFACE, fg=theme.TEXT, font=theme.font(16, "bold"), anchor="w")
+        self.mission_name.pack(fill="x")
+        self.mission_meta = tk.Label(
+            mission,
+            text="Queue Disruption or Survival while this app is running.",
+            bg=theme.SURFACE,
+            fg=theme.MUTED,
+            font=theme.font(10),
+            anchor="w",
+        )
+        self.mission_meta.pack(fill="x", pady=(2, 0))
 
-        grade_card = self._card(left, "Grade", fill="x", pady=(0, 10))
-        grade_row = tk.Frame(grade_card, bg=theme.PANEL)
+        grade_card = theme.card(left, "Grade", fill="x", pady=(0, 12))
+        grade_row = tk.Frame(grade_card, bg=theme.SURFACE)
         grade_row.pack(fill="x")
-        self.grade_letter = tk.Label(grade_row, text="?", bg=theme.PANEL, fg=theme.GOLD, font=("Segoe UI", 48, "bold"))
-        self.grade_letter.pack(side="left", padx=(0, 16))
-        grade_text = tk.Frame(grade_row, bg=theme.PANEL)
+        self.grade_well = tk.Frame(grade_row, bg=theme.ELEVATED)
+        self.grade_well.pack(side="left", padx=(0, 16))
+        self.grade_letter = tk.Label(
+            self.grade_well,
+            text="?",
+            bg=theme.ELEVATED,
+            fg=theme.GOLD,
+            font=theme.font(44, "bold"),
+            width=2,
+            padx=10,
+            pady=6,
+        )
+        self.grade_letter.pack()
+        grade_text = tk.Frame(grade_row, bg=theme.SURFACE)
         grade_text.pack(side="left", fill="both", expand=True)
-        self.rec_label = self._label(grade_text, "WAIT", 16, theme.YELLOW, bold=True)
-        self.score_label = self._label(grade_text, "Score 0", 10, theme.MUTED)
-        self.reasons = tk.Text(
-            grade_card,
-            height=6,
-            bg=theme.PANEL_ALT,
-            fg=theme.TEXT,
-            bd=0,
-            relief="flat",
-            font=("Segoe UI", 10),
-            wrap="word",
+        rec_row = tk.Frame(grade_text, bg=theme.SURFACE)
+        rec_row.pack(fill="x")
+        self.rec_label = tk.Label(
+            rec_row,
+            text="WAIT",
+            bg=theme.WAIT_BG,
+            fg=theme.YELLOW,
+            font=theme.font(11, "bold"),
+            padx=10,
+            pady=3,
         )
-        self.reasons.pack(fill="x", pady=(8, 0))
-        self.reasons.configure(state="disabled")
+        self.rec_label.pack(side="left")
+        self.score_label = tk.Label(rec_row, text="Score 0", bg=theme.SURFACE, fg=theme.MUTED, font=theme.font(10), padx=10)
+        self.score_label.pack(side="left")
+        self.reasons_frame = tk.Frame(grade_card, bg=theme.SURFACE)
+        self.reasons_frame.pack(fill="x", pady=(12, 0))
 
-        layout_card = self._card(left, "Layout", fill="both", expand=True)
-        self.layout_label = self._label(layout_card, "No rooms identified.", 10, theme.MUTED)
-        self.tile_list = tk.Listbox(
-            layout_card,
-            bg=theme.PANEL_ALT,
+        layout_card = theme.card(left, "Layout", fill="both", expand=True)
+        self.layout_label = tk.Label(layout_card, text="No rooms identified.", bg=theme.SURFACE, fg=theme.MUTED, font=theme.font(10), anchor="w")
+        self.layout_label.pack(fill="x")
+        self.tile_frame = tk.Frame(layout_card, bg=theme.SURFACE)
+        self.tile_frame.pack(fill="both", expand=True, pady=(8, 0))
+
+        tracker = theme.card(right, "Live tracker", fill="x", pady=(0, 12))
+        self.tracker_text = tk.Label(
+            tracker,
+            text="No run in progress.",
+            bg=theme.SURFACE,
             fg=theme.TEXT,
-            bd=0,
-            highlightthickness=0,
-            font=("Consolas", 11),
-            selectbackground=theme.GOLD_DIM,
+            font=theme.font(10),
+            anchor="w",
+            justify="left",
+            wraplength=300,
         )
-        self.tile_list.pack(fill="both", expand=True, pady=(6, 0))
+        self.tracker_text.pack(fill="x")
 
-        tracker = self._card(right, "Live tracker", fill="x", pady=(0, 10))
-        self.tracker_text = self._label(tracker, "No run in progress.", 10, theme.TEXT)
-
-        picker = self._card(right, "Mark rooms you see", fill="both", expand=True, pady=(0, 10))
-        self.picker_hint = self._label(
+        picker = theme.card(right, "Mark rooms you see", fill="both", expand=True, pady=(0, 12))
+        tk.Label(
             picker,
-            "If EE.log hides tiles, toggle the rooms in front of you.",
-            9,
-            theme.MUTED,
-        )
-        self.picker_frame = tk.Frame(picker, bg=theme.PANEL)
-        self.picker_frame.pack(fill="both", expand=True, pady=(6, 0))
+            text="If EE.log hides tiles, toggle the rooms in front of you.",
+            bg=theme.SURFACE,
+            fg=theme.MUTED,
+            font=theme.font(9),
+            anchor="w",
+            wraplength=300,
+            justify="left",
+        ).pack(fill="x")
+        picker_scroll = tk.Frame(picker, bg=theme.SURFACE)
+        picker_scroll.pack(fill="both", expand=True, pady=(8, 0))
+        self.picker_frame = tk.Frame(picker_scroll, bg=theme.SURFACE)
+        self.picker_frame.pack(fill="both", expand=True)
 
-        settings = self._card(right, "Controls", fill="x")
+        settings = theme.card(right, "Overlay & controls", fill="x")
         self.overlay_var = tk.BooleanVar(value=bool(self.cfg["overlay"].get("visible", True)))
         self.overlay_lock_var = tk.BooleanVar(value=bool(self.cfg["overlay"].get("locked", False)))
         self.top_var = tk.BooleanVar(value=bool(self.cfg.get("always_on_top", True)))
-        self._check(settings, "Show overlay", self.overlay_var, self._toggle_overlay)
-        self._check(settings, "Lock overlay (click-through)", self.overlay_lock_var, self._toggle_lock)
-        self._check(settings, "Main window always on top", self.top_var, self._toggle_top)
-        btn_row = tk.Frame(settings, bg=theme.PANEL)
-        btn_row.pack(fill="x", pady=(8, 0))
-        self._button(btn_row, "Demo: Disruption", lambda: self._play_sample("sample_disruption.log")).pack(
+        theme.check(settings, "Show overlay", self.overlay_var, self._toggle_overlay)
+        theme.check(settings, "Lock overlay (click-through)", self.overlay_lock_var, self._toggle_lock)
+        theme.check(settings, "Main window always on top", self.top_var, self._toggle_top)
+
+        opacity_row = tk.Frame(settings, bg=theme.SURFACE)
+        opacity_row.pack(fill="x", pady=(10, 0))
+        tk.Label(opacity_row, text="Overlay opacity", bg=theme.SURFACE, fg=theme.MUTED, font=theme.font(9, "bold")).pack(
+            side="left"
+        )
+        start_opacity = max(0.25, min(1.0, float(self.cfg["overlay"].get("opacity", 0.92))))
+        self.opacity_value = tk.Label(
+            opacity_row,
+            text=f"{int(round(start_opacity * 100))}%",
+            bg=theme.SURFACE,
+            fg=theme.GOLD,
+            font=theme.font(9, "bold"),
+        )
+        self.opacity_value.pack(side="right")
+        self.opacity_var = tk.DoubleVar(value=start_opacity * 100)
+        ttk.Scale(
+            settings,
+            from_=25,
+            to=100,
+            variable=self.opacity_var,
+            command=self._on_opacity,
+            style="Overlay.Horizontal.TScale",
+        ).pack(fill="x", pady=(6, 0))
+
+        btn_row = tk.Frame(settings, bg=theme.SURFACE)
+        btn_row.pack(fill="x", pady=(12, 0))
+        theme.button(btn_row, "Demo: Disruption", lambda: self._play_sample("sample_disruption.log")).pack(
             side="left", padx=(0, 6)
         )
-        self._button(btn_row, "Demo: Survival", lambda: self._play_sample("sample_survival.log")).pack(side="left")
-        btn_row2 = tk.Frame(settings, bg=theme.PANEL)
+        theme.button(btn_row, "Demo: Survival", lambda: self._play_sample("sample_survival.log")).pack(side="left")
+        btn_row2 = tk.Frame(settings, bg=theme.SURFACE)
         btn_row2.pack(fill="x", pady=(6, 0))
-        self._button(btn_row2, "Open EE.log…", self._pick_log).pack(side="left", padx=(0, 6))
-        self._button(btn_row2, "Replay current log", self._replay_log).pack(side="left")
-        btn_row3 = tk.Frame(settings, bg=theme.PANEL)
+        theme.button(btn_row2, "Open EE.log…", self._pick_log).pack(side="left", padx=(0, 6))
+        theme.button(btn_row2, "Replay log", self._replay_log).pack(side="left")
+        btn_row3 = tk.Frame(settings, bg=theme.SURFACE)
         btn_row3.pack(fill="x", pady=(6, 0))
-        self._button(btn_row3, "Report a bug", self._report_bug).pack(side="left", padx=(0, 6))
-        self._button(btn_row3, "GitHub", open_github).pack(side="left")
+        theme.button(btn_row3, "Report a bug", self._report_bug).pack(side="left", padx=(0, 6))
+        theme.button(btn_row3, "GitHub", open_github, kind="primary").pack(side="left")
 
         self.root.protocol("WM_DELETE_WINDOW", self._close)
-
-    def _card(self, parent: tk.Widget, title: str, **pack) -> tk.Frame:
-        wrap = tk.Frame(parent, bg=theme.PANEL, highlightthickness=1, highlightbackground=theme.BORDER)
-        if pack:
-            wrap.pack(**pack)
-        inner = tk.Frame(wrap, bg=theme.PANEL)
-        inner.pack(fill="both", expand=True, padx=12, pady=10)
-        tk.Label(inner, text=title.upper(), bg=theme.PANEL, fg=theme.GOLD_DIM, font=("Segoe UI", 8, "bold")).pack(
-            anchor="w"
-        )
-        return inner
-
-    def _label(self, parent: tk.Widget, text: str, size: int, color: str, bold: bool = False) -> tk.Label:
-        label = tk.Label(
-            parent,
-            text=text,
-            bg=parent.cget("bg"),
-            fg=color,
-            font=("Segoe UI", size, "bold" if bold else "normal"),
-            anchor="w",
-            justify="left",
-            wraplength=520,
-        )
-        label.pack(fill="x")
-        return label
-
-    def _check(self, parent: tk.Widget, text: str, var: tk.BooleanVar, command) -> None:
-        tk.Checkbutton(
-            parent,
-            text=text,
-            variable=var,
-            command=command,
-            bg=theme.PANEL,
-            fg=theme.TEXT,
-            selectcolor=theme.PANEL_ALT,
-            activebackground=theme.PANEL,
-            activeforeground=theme.TEXT,
-            font=("Segoe UI", 9),
-            anchor="w",
-        ).pack(fill="x", pady=1)
-
-    def _button(self, parent: tk.Widget, text: str, command) -> tk.Button:
-        return tk.Button(
-            parent,
-            text=text,
-            command=command,
-            bg=theme.PANEL_ALT,
-            fg=theme.GOLD,
-            activebackground=theme.GOLD_DIM,
-            activeforeground=theme.BG,
-            bd=0,
-            padx=10,
-            pady=5,
-            font=("Segoe UI", 9, "bold"),
-        )
 
     def _start_watchers(self) -> None:
         log_path = Path(self.cfg.get("ee_log_path") or default_ee_log())
         self.watcher = LogWatcher(
             log_path,
-            on_line=lambda line: self.events.put(("line", line)),
+            on_events=lambda events: self.events.put(("events", events)),
             on_status=lambda msg: self.events.put(("status", msg)),
             from_end=bool(self.cfg.get("read_from_end", True)),
         )
@@ -243,7 +272,11 @@ class TileReaderApp:
             while True:
                 item = self.events.get_nowait()
                 kind = item[0]
-                if kind == "line":
+                if kind == "events":
+                    for event in item[1]:
+                        if self.controller.handle(event):
+                            changed = True
+                elif kind == "line":
                     for event in self.parser.feed(item[1]):
                         if self.controller.handle(event):
                             changed = True
@@ -257,14 +290,14 @@ class TileReaderApp:
         except queue.Empty:
             pass
         if changed:
+            self.store.flush_discovered()
             self._refresh()
-        self.root.after(50, self._drain)
+        self.root.after(16, self._drain)
 
     def _refresh(self) -> None:
         session = self.controller.session
         mission = session.mission
         grade = session.grade
-        self.status_var.set(session.status)
         name = mission.display_name or mission.node_id or "No mission"
         bits = [
             mission.kind.value.title() if mission.kind else "",
@@ -279,24 +312,100 @@ class TileReaderApp:
         self.mission_meta.configure(text="  ·  ".join(bit for bit in bits if bit) or "Waiting…")
 
         rec = grade.recommendation.value if isinstance(grade.recommendation, Recommendation) else str(grade.recommendation)
+        rec_fg = theme.REC_COLORS.get(rec, theme.YELLOW)
+        rec_bg = theme.REC_BG.get(rec, theme.WAIT_BG)
+        self.status_var.set(session.status)
+        self.status_pill.configure(text=session.status, fg=rec_fg, bg=rec_bg)
         self.grade_letter.configure(text=grade.grade, fg=theme.GRADE_COLORS.get(grade.grade, theme.MUTED))
-        self.rec_label.configure(text=rec, fg=theme.REC_COLORS.get(rec, theme.YELLOW))
+        self.rec_label.configure(text=rec, fg=rec_fg, bg=rec_bg)
         self.score_label.configure(text=f"Score {grade.score}" + (f"  ·  {grade.matched_layout}" if grade.matched_layout else ""))
-        self.reasons.configure(state="normal")
-        self.reasons.delete("1.0", "end")
-        self.reasons.insert("1.0", "\n".join(grade.reasons) or "No grade yet.")
-        self.reasons.configure(state="disabled")
+        self._render_reasons(grade.reasons)
 
         tiles = session.layout.short_names()
         extra = f"segments {session.layout.segments}" if session.layout.segments else session.layout.source
         self.layout_label.configure(text=extra or "No rooms identified.")
-        self.tile_list.delete(0, "end")
-        for tile in session.layout.tiles:
-            self.tile_list.insert("end", f"{tile.role:<10} {tile.short_name}")
+        self._render_tiles(session.layout.tiles)
 
         self.tracker_text.configure(text=self._tracker_summary())
-        self._rebuild_picker()
+        self._sync_picker()
         self.overlay.update_view(mission, grade, session.layout.intermediate_names() or tiles, session.status)
+
+    def _render_reasons(self, reasons: list[str]) -> None:
+        key = "\n".join(reasons)
+        if key == self._reason_key:
+            return
+        self._reason_key = key
+        for child in self.reasons_frame.winfo_children():
+            child.destroy()
+        items = reasons or ["No grade yet."]
+        for reason in items:
+            row = tk.Frame(self.reasons_frame, bg=theme.SURFACE)
+            row.pack(fill="x", pady=2)
+            tk.Frame(row, bg=theme.GOLD_DIM, width=2).pack(side="left", fill="y", padx=(0, 10))
+            tk.Label(
+                row,
+                text=reason,
+                bg=theme.SURFACE,
+                fg=theme.TEXT,
+                font=theme.font(10),
+                anchor="w",
+                justify="left",
+                wraplength=520,
+            ).pack(side="left", fill="x", expand=True)
+
+    def _render_tiles(self, tiles: list[Tile]) -> None:
+        key = tuple((tile.role, tile.short_name) for tile in tiles)
+        if key == self._tile_key:
+            return
+        self._tile_key = key
+        for child in self.tile_frame.winfo_children():
+            child.destroy()
+        if not tiles:
+            tk.Label(
+                self.tile_frame,
+                text="Rooms will appear here as the mission loads.",
+                bg=theme.SURFACE,
+                fg=theme.MUTED,
+                font=theme.font(10),
+                anchor="w",
+            ).pack(fill="x")
+            return
+        for index, tile in enumerate(tiles):
+            bg = theme.ELEVATED if index % 2 == 0 else theme.SURFACE
+            row = tk.Frame(self.tile_frame, bg=bg)
+            row.pack(fill="x", pady=1)
+            tk.Label(
+                row,
+                text=tile.role,
+                bg=bg,
+                fg=theme.GOLD,
+                font=theme.font(8, "bold"),
+                width=8,
+                padx=8,
+                pady=5,
+            ).pack(side="left")
+            tk.Label(
+                row,
+                text=tile.short_name,
+                bg=bg,
+                fg=theme.TEXT,
+                font=(theme.FONT_MONO, 10),
+                anchor="w",
+                padx=8,
+            ).pack(side="left", fill="x", expand=True)
+
+    def _on_opacity(self, _value: str | None = None) -> None:
+        alpha = max(0.25, min(1.0, float(self.opacity_var.get()) / 100.0))
+        self.cfg["overlay"]["opacity"] = round(alpha, 2)
+        self.opacity_value.configure(text=f"{int(round(alpha * 100))}%")
+        if self.overlay:
+            self.overlay.set_opacity(alpha)
+        if self._opacity_save_job:
+            try:
+                self.root.after_cancel(self._opacity_save_job)
+            except tk.TclError:
+                pass
+        self._opacity_save_job = self.root.after(400, lambda: save_config(self.cfg))
 
     def _tracker_summary(self) -> str:
         session = self.controller.session
@@ -320,6 +429,31 @@ class TileReaderApp:
             return "Survival: looking for the catalog farm room."
         return "No Disruption / Survival run in progress."
 
+    def _sync_picker(self) -> None:
+        mission = self.controller.session.mission
+        catalog = self.store.catalog_for(mission.node_id, mission.kind, mission.level_override)
+        key = catalog.key if catalog else ""
+        if self._picker_force or key != self._picker_key:
+            self._picker_force = False
+            self._picker_key = key
+            self._rebuild_picker()
+            return
+        if not catalog or not self.room_vars:
+            return
+        matched = set()
+        for tile in self.controller.session.layout.tiles:
+            room = catalog.match_tile(tile.short_name)
+            if room:
+                matched.add(room.id.lower())
+        self._ignore_picker = True
+        try:
+            for room_id, var in self.room_vars.items():
+                want = room_id.lower() in matched
+                if var.get() != want:
+                    var.set(want)
+        finally:
+            self._ignore_picker = False
+
     def _rebuild_picker(self) -> None:
         mission = self.controller.session.mission
         catalog = self.store.catalog_for(mission.node_id, mission.kind, mission.level_override)
@@ -330,17 +464,18 @@ class TileReaderApp:
             tk.Label(
                 self.picker_frame,
                 text="No room catalog for this node yet.",
-                bg=theme.PANEL,
+                bg=theme.SURFACE,
                 fg=theme.MUTED,
-                font=("Segoe UI", 9),
-                wraplength=280,
+                font=theme.font(9),
+                wraplength=300,
                 justify="left",
             ).pack(anchor="w")
             return
         selected = {tile.short_name.lower() for tile in self.controller.session.layout.tiles}
         rejected = {item.lower() for item in self.cfg.get("rejected_tiles", {}).get(catalog.key, [])}
-        for room in catalog.rooms:
-            row = tk.Frame(self.picker_frame, bg=theme.PANEL)
+        for index, room in enumerate(catalog.rooms):
+            bg = theme.ELEVATED if index % 2 == 0 else theme.SURFACE
+            row = tk.Frame(self.picker_frame, bg=bg)
             row.pack(fill="x", pady=1)
             var = tk.BooleanVar(value=room.id.lower() in selected or room.display.lower() in selected)
             self.room_vars[room.id] = var
@@ -349,28 +484,36 @@ class TileReaderApp:
                 text=f"{room.display}  ({room.score:+d})",
                 variable=var,
                 command=self._manual_tiles_changed,
-                bg=theme.PANEL,
+                bg=bg,
                 fg=theme.RED if room.id.lower() in rejected else theme.TEXT,
-                selectcolor=theme.PANEL_ALT,
-                activebackground=theme.PANEL,
+                selectcolor=theme.SURFACE_2,
+                activebackground=bg,
                 activeforeground=theme.TEXT,
-                font=("Segoe UI", 9),
+                font=theme.font(9),
                 anchor="w",
-            ).pack(side="left", fill="x", expand=True)
+                bd=0,
+                highlightthickness=0,
+                cursor="hand2",
+            ).pack(side="left", fill="x", expand=True, padx=4, pady=2)
             reject_var = tk.BooleanVar(value=room.id.lower() in rejected)
             tk.Checkbutton(
                 row,
                 text="reject",
                 variable=reject_var,
                 command=lambda rid=room.id, rv=reject_var, key=catalog.key: self._toggle_reject(key, rid, rv.get()),
-                bg=theme.PANEL,
+                bg=bg,
                 fg=theme.MUTED,
-                selectcolor=theme.PANEL_ALT,
-                activebackground=theme.PANEL,
-                font=("Segoe UI", 8),
-            ).pack(side="right")
+                selectcolor=theme.SURFACE_2,
+                activebackground=bg,
+                font=theme.font(8),
+                bd=0,
+                highlightthickness=0,
+                cursor="hand2",
+            ).pack(side="right", padx=4)
 
     def _manual_tiles_changed(self) -> None:
+        if self._ignore_picker:
+            return
         names = [room_id for room_id, var in self.room_vars.items() if var.get()]
         self.controller.set_manual_tiles(names)
         self._refresh()
@@ -382,6 +525,7 @@ class TileReaderApp:
         if not enabled and room_id in bucket:
             bucket.remove(room_id)
         save_config(self.cfg)
+        self._picker_force = True
         self.controller._regrade()
         self._refresh()
 
@@ -415,6 +559,7 @@ class TileReaderApp:
             return
         self.parser.reset()
         self.controller.session.reset_mission()
+        self._picker_force = True
         for line in path.read_text(encoding="utf-8").splitlines(True):
             for event in self.parser.feed(line):
                 self.controller.handle(event)
@@ -432,6 +577,7 @@ class TileReaderApp:
             self.watcher.stop()
         self.parser.reset()
         self.controller.session.reset_mission()
+        self._picker_force = True
         self._start_watchers()
         self._refresh()
 
@@ -442,6 +588,7 @@ class TileReaderApp:
             return
         self.parser.reset()
         self.controller.session.reset_mission()
+        self._picker_force = True
         for line in path.read_text(encoding="utf-8", errors="replace").splitlines(True):
             for event in self.parser.feed(line):
                 self.controller.handle(event)
@@ -456,7 +603,13 @@ class TileReaderApp:
             self.watcher.stop()
         if self.shots:
             self.shots.stop()
+        if self._opacity_save_job:
+            try:
+                self.root.after_cancel(self._opacity_save_job)
+            except tk.TclError:
+                pass
         save_config(self.cfg)
+        self.store.flush_discovered()
         self.root.destroy()
 
 

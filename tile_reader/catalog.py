@@ -90,6 +90,7 @@ class CatalogStore:
         self.nodes: dict[str, dict[str, Any]] = {}
         self.catalogs: dict[str, Catalog] = {}
         self.discovered: dict[str, list[str]] = {}
+        self._discovered_dirty = False
         self.reload()
 
     def reload(self) -> None:
@@ -116,6 +117,7 @@ class CatalogStore:
                 self.discovered = json.loads(discovered_path.read_text(encoding="utf-8"))
             except json.JSONDecodeError:
                 self.discovered = {}
+        self._discovered_dirty = False
 
     def remember_tile(self, catalog_key: str, short_name: str) -> None:
         if not catalog_key or not short_name:
@@ -123,9 +125,15 @@ class CatalogStore:
         bucket = self.discovered.setdefault(catalog_key, [])
         if short_name not in bucket:
             bucket.append(short_name)
-            discovered_tiles_path().write_text(
-                json.dumps(self.discovered, indent=2), encoding="utf-8"
-            )
+            self._discovered_dirty = True
+
+    def flush_discovered(self) -> None:
+        if not self._discovered_dirty:
+            return
+        discovered_tiles_path().write_text(
+            json.dumps(self.discovered, indent=2), encoding="utf-8"
+        )
+        self._discovered_dirty = False
 
     def node_info(self, node_id: str) -> dict[str, Any]:
         return self.nodes.get(node_id, {})

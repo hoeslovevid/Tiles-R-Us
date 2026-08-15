@@ -124,54 +124,44 @@ def show_bug_dialog(parent, session: Optional[Session] = None) -> None:
     dialog = tk.Toplevel(parent)
     dialog.title("Report a bug")
     dialog.configure(bg=theme.BG)
-    dialog.geometry("560x560")
+    dialog.geometry("580x600")
     dialog.transient(parent)
     dialog.attributes("-topmost", True)
     dialog.grab_set()
+    theme.round_corners(dialog)
 
-    pad = {"padx": 16, "pady": 6}
+    header = tk.Frame(dialog, bg=theme.SURFACE, highlightthickness=1, highlightbackground=theme.BORDER)
+    header.pack(fill="x", padx=16, pady=(16, 8))
+    head_inner = tk.Frame(header, bg=theme.SURFACE)
+    head_inner.pack(fill="x", padx=16, pady=12)
+    tk.Label(head_inner, text="Report a bug", bg=theme.SURFACE, fg=theme.GOLD, font=theme.font(14, "bold")).pack(anchor="w")
     tk.Label(
-        dialog,
-        text="REPORT A BUG",
-        bg=theme.BG,
-        fg=theme.GOLD,
-        font=("Segoe UI", 14, "bold"),
-    ).pack(anchor="w", padx=16, pady=(16, 4))
-    tk.Label(
-        dialog,
+        head_inner,
         text="Opens a GitHub issue. Diagnostics never include EE.log (that file can contain your email and IP).",
-        bg=theme.BG,
+        bg=theme.SURFACE,
         fg=theme.MUTED,
         wraplength=520,
         justify="left",
-        font=("Segoe UI", 9),
-    ).pack(anchor="w", padx=16)
+        font=theme.font(9),
+    ).pack(anchor="w", pady=(4, 0))
 
-    tk.Label(dialog, text="What happened", bg=theme.BG, fg=theme.GOLD_DIM, font=("Segoe UI", 8, "bold")).pack(
-        anchor="w", padx=16, pady=(12, 0)
-    )
-    what = tk.Text(dialog, height=4, bg=theme.PANEL, fg=theme.TEXT, bd=0, font=("Segoe UI", 10), wrap="word")
-    what.pack(fill="x", **pad)
+    body = tk.Frame(dialog, bg=theme.BG)
+    body.pack(fill="both", expand=True, padx=16)
 
-    tk.Label(dialog, text="Steps to reproduce", bg=theme.BG, fg=theme.GOLD_DIM, font=("Segoe UI", 8, "bold")).pack(
-        anchor="w", padx=16
-    )
-    steps = tk.Text(dialog, height=4, bg=theme.PANEL, fg=theme.TEXT, bd=0, font=("Segoe UI", 10), wrap="word")
-    steps.pack(fill="x", **pad)
+    tk.Label(body, text="WHAT HAPPENED", bg=theme.BG, fg=theme.GOLD_DIM, font=theme.font(8, "bold")).pack(anchor="w", pady=(8, 4))
+    what = tk.Text(body, height=4, bg=theme.SURFACE, fg=theme.TEXT, insertbackground=theme.TEXT, bd=0, font=theme.font(10), wrap="word", highlightthickness=1, highlightbackground=theme.BORDER)
+    what.pack(fill="x")
+
+    tk.Label(body, text="STEPS TO REPRODUCE", bg=theme.BG, fg=theme.GOLD_DIM, font=theme.font(8, "bold")).pack(anchor="w", pady=(12, 4))
+    steps = tk.Text(body, height=4, bg=theme.SURFACE, fg=theme.TEXT, insertbackground=theme.TEXT, bd=0, font=theme.font(10), wrap="word", highlightthickness=1, highlightbackground=theme.BORDER)
+    steps.pack(fill="x")
 
     include = tk.BooleanVar(value=True)
-    tk.Checkbutton(
-        dialog,
-        text="Include app diagnostics (mission, rooms, grade, OS — no account data)",
-        variable=include,
-        bg=theme.BG,
-        fg=theme.TEXT,
-        selectcolor=theme.PANEL,
-        activebackground=theme.BG,
-        activeforeground=theme.TEXT,
-        font=("Segoe UI", 9),
-        anchor="w",
-    ).pack(fill="x", padx=16)
+    theme.check(
+        body,
+        "Include app diagnostics (mission, rooms, grade, OS — no account data)",
+        include,
+    )
 
     def _body() -> str:
         diag = diagnostics if include.get() else "(diagnostics not included)"
@@ -198,24 +188,8 @@ def show_bug_dialog(parent, session: Optional[Session] = None) -> None:
 
     buttons = tk.Frame(dialog, bg=theme.BG)
     buttons.pack(fill="x", padx=16, pady=16)
-
-    def _btn(text, command, side="left"):
-        tk.Button(
-            buttons,
-            text=text,
-            command=command,
-            bg=theme.PANEL_ALT,
-            fg=theme.GOLD,
-            activebackground=theme.GOLD_DIM,
-            activeforeground=theme.BG,
-            bd=0,
-            padx=12,
-            pady=6,
-            font=("Segoe UI", 9, "bold"),
-        ).pack(side=side, padx=(0, 8))
-
-    _btn("Open GitHub issue", submit)
-    _btn("Copy report", copy_only)
-    _btn("Cancel", dialog.destroy, side="right")
+    theme.button(buttons, "Open GitHub issue", submit, kind="primary").pack(side="left", padx=(0, 8))
+    theme.button(buttons, "Copy report", copy_only).pack(side="left")
+    theme.button(buttons, "Cancel", dialog.destroy).pack(side="right")
     what.focus_set()
 
