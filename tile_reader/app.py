@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import queue
+import tempfile
+import threading
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
@@ -18,6 +20,13 @@ from .parser import LineParser
 from .paths import default_ee_log, default_screenshot_dir, sample_dir
 from .screenshot_watcher import ScreenshotWatcher
 from .session import SessionController
+from .updater import (
+    ReleaseInfo,
+    download_setup,
+    fetch_latest_release,
+    format_release_summary,
+    launch_installer_and_relaunch,
+)
 
 
 class TileReaderApp:
@@ -38,6 +47,10 @@ class TileReaderApp:
         self._tile_key = None
         self._opacity_save_job: Optional[str] = None
         self.overlay: Optional[OverlayWindow] = None
+        self._latest_release: Optional[ReleaseInfo] = None
+        self._update_busy = False
+        self._progress_win: Optional[tk.Toplevel] = None
+        self._progress_label: Optional[tk.Label] = None
 
         self._build()
         opacity = float(self.cfg["overlay"].get("opacity", 0.92))
@@ -70,6 +83,7 @@ class TileReaderApp:
 
         menubar = tk.Menu(self.root)
         help_menu = tk.Menu(menubar, tearoff=0)
+        help_menu.add_command(label="Check for updates…", command=self._check_for_updates)
         help_menu.add_command(label="Report a bug…", command=self._report_bug)
         help_menu.add_command(label="Open GitHub", command=open_github)
         help_menu.add_separator()
@@ -87,7 +101,7 @@ class TileReaderApp:
         tk.Label(brand, text=APP_NAME.upper(), bg=theme.SURFACE, fg=theme.GOLD, font=theme.font(18, "bold")).pack(
             side="left"
         )
-        tk.Label(
+        self.version_chip = tk.Label(
             brand,
             text=f"v{VERSION}",
             bg=theme.ELEVATED,
@@ -95,7 +109,10 @@ class TileReaderApp:
             font=theme.font(8, "bold"),
             padx=8,
             pady=2,
-        ).pack(side="left", padx=(10, 0))
+            cursor="hand2",
+        )
+        self.version_chip.pack(side="left", padx=(10, 0))
+        self.version_chip.bind("<Button-1>", lambda _e: self._check_for_updates())
 
         self.status_pill = tk.Label(
             header,
@@ -245,9 +262,12 @@ class TileReaderApp:
         btn_row3 = tk.Frame(settings, bg=theme.SURFACE)
         btn_row3.pack(fill="x", pady=(6, 0))
         theme.button(btn_row3, "Report a bug", self._report_bug).pack(side="left", padx=(0, 6))
-        theme.button(btn_row3, "GitHub", open_github, kind="primary").pack(side="left")
+        self.update_btn = theme.button(btn_row3, "Check for updates", self._check_for_updates)
+        self.update_btn.pack(side="left", padx=(0, 6))
+        theme.button(btn_row3, "GitHub", open_github).pack(side="left")
 
         self.root.protocol("WM_DELETE_WINDOW", self._close)
+        self.root.after(1800, lambda: self._check_for_updates(quiet=True))
 
     def _start_watchers(self) -> None:
         log_path = Path(self.cfg.get("ee_log_path") or default_ee_log())
@@ -287,6 +307,14 @@ class TileReaderApp:
                     tile: Tile = item[1]
                     self.controller.add_tile(tile)
                     changed = True
+                elif kind == "update":
+                    self._on_update_result(item[1], item[2])
+                elif kind == "update_error":
+                    self._on_update_error(item[1], item[2])
+                elif kind == "update_progress":
+                    self._on_update_progress(item[1], item[2])
+                elif kind == "update_ready":
+                    self._on_update_ready(item[1])
         except queue.Empty:
             pass
         if changed:
@@ -594,6 +622,134 @@ class TileReaderApp:
                 self.controller.handle(event)
         self.controller.session.status = f"Replayed {path.name}"
         self._refresh()
+
+    def _check_for_updates(self, quiet: bool = False) -> None:
+        if self._update_busy:
+            return
+        if self._latest_release and self._latest_release.newer and not quiet:
+            self._prompt_update(self._latest_release)
+            return
+        self._update_busy = True
+        if not quiet:
+            self.update_btn.configure(text="Checking…")
+
+        def worker() -> None:
+            try:
+                release = fetch_latest_release()
+                self.events.put(("update", release, quiet))
+            except Exception as exc:
+                self.events.put(("update_error", str(exc), quiet))
+
+        threading.Thread(target=worker, name="TilesRUsUpdateCheck", daemon=True).start()
+
+    def _on_update_result(self, release: ReleaseInfo, quiet: bool) -> None:
+        self._update_busy = False
+        self._latest_release = release
+        self._show_update_available(release.newer)
+        if quiet and not release.newer:
+            return
+        if release.newer:
+            if quiet:
+                return
+            self._prompt_update(release)
+            return
+        if not quiet:
+            messagebox.showinfo(
+                "Up to date",
+                f"{APP_NAME} {VERSION} is the latest release.",
+                parent=self.root,
+            )
+
+    def _on_update_error(self, message: str, quiet: bool) -> None:
+        self._update_busy = False
+        if getattr(self, "_progress_win", None):
+            try:
+                self._progress_win.destroy()
+            except tk.TclError:
+                pass
+            self._progress_win = None
+        available = bool(self._latest_release and self._latest_release.newer)
+        self._show_update_available(available)
+        if not quiet:
+            messagebox.showerror("Update failed", message, parent=self.root)
+
+    def _show_update_available(self, available: bool) -> None:
+        if available and self._latest_release:
+            label = f"v{VERSION} · update {self._latest_release.version}"
+            self.version_chip.configure(text=label, bg=theme.GOLD, fg=theme.BG)
+            self.update_btn.configure(text=f"Update to {self._latest_release.version}")
+        else:
+            self.version_chip.configure(text=f"v{VERSION}", bg=theme.ELEVATED, fg=theme.MUTED)
+            self.update_btn.configure(text="Check for updates")
+
+    def _prompt_update(self, release: ReleaseInfo) -> None:
+        summary = format_release_summary(release)
+        ok = messagebox.askyesno(
+            "Update available",
+            f"{APP_NAME} {release.version} is available (you have {VERSION}).\n\n"
+            f"{summary}\n\n"
+            "Download and install now? The app will close, then reopen.",
+            parent=self.root,
+        )
+        if ok:
+            self._start_update(release)
+
+    def _start_update(self, release: ReleaseInfo) -> None:
+        if self._update_busy:
+            return
+        self._update_busy = True
+        dest = Path(tempfile.gettempdir()) / "TilesRUs-Setup.exe"
+        self._open_progress(f"Downloading {APP_NAME} {release.version}…")
+
+        def worker() -> None:
+            try:
+                download_setup(
+                    release.setup_url,
+                    dest,
+                    progress=lambda done, total: self.events.put(("update_progress", done, total)),
+                )
+                self.events.put(("update_ready", dest))
+            except Exception as exc:
+                self.events.put(("update_error", str(exc), False))
+
+        threading.Thread(target=worker, name="TilesRUsUpdateDownload", daemon=True).start()
+
+    def _open_progress(self, title: str) -> None:
+        win = tk.Toplevel(self.root)
+        win.title(title)
+        win.configure(bg=theme.BG)
+        win.geometry("420x120")
+        win.transient(self.root)
+        win.resizable(False, False)
+        tk.Label(win, text=title, bg=theme.BG, fg=theme.TEXT, font=theme.font(11, "bold")).pack(padx=18, pady=(18, 8))
+        self._progress_label = tk.Label(win, text="Starting…", bg=theme.BG, fg=theme.MUTED, font=theme.font(9))
+        self._progress_label.pack(padx=18)
+        self._progress_win = win
+        win.protocol("WM_DELETE_WINDOW", lambda: None)
+
+    def _on_update_progress(self, done: int, total: int) -> None:
+        if not getattr(self, "_progress_label", None):
+            return
+        if total > 0:
+            pct = min(100, int(done * 100 / total))
+            self._progress_label.configure(text=f"{pct}%  ·  {done // 1024} KB / {total // 1024} KB")
+        else:
+            self._progress_label.configure(text=f"{done // 1024} KB downloaded")
+
+    def _on_update_ready(self, setup_path: Path) -> None:
+        self._update_busy = False
+        if getattr(self, "_progress_win", None):
+            try:
+                self._progress_win.destroy()
+            except tk.TclError:
+                pass
+            self._progress_win = None
+        try:
+            launch_installer_and_relaunch(setup_path)
+        except Exception as exc:
+            messagebox.showerror("Update failed", str(exc), parent=self.root)
+            return
+        self._close()
 
     def _report_bug(self) -> None:
         show_bug_dialog(self.root, self.controller.session)
