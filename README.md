@@ -2,21 +2,25 @@
 
 Warframe overlay that reads the current Disruption or Survival layout and grades it against a local catalog of known rooms.
 
-## Install from GitHub
+## Install
+
+**Easiest:** download [TilesRUs-Setup.exe](https://github.com/hoeslovevid/Tiles-R-Us/releases/latest) and double-click it. That wizard puts **Tiles R Us** in the Start Menu and on the desktop, then offers to open the app.
+
+From this folder, double-click **Install Tiles R Us.cmd**. It downloads that same wizard.
+
+From PowerShell:
 
 ```powershell
 irm https://raw.githubusercontent.com/hoeslovevid/Tiles-R-Us/main/scripts/bootstrap.ps1 | iex
 ```
 
-That downloads the latest GitHub Release if one exists, otherwise it installs from `main` and uses Python. It creates Start Menu and desktop shortcuts, and registers an uninstaller in **Apps & Features**.
+After setup, open the app from:
 
-From a clone of this folder:
+- Start Menu → **Tiles R Us**
+- The desktop shortcut
+- `tilesrus` in a new terminal
 
-```bat
-scripts\install.cmd
-```
-
-Tagged releases also attach `TilesRUs-Setup.exe` via GitHub Actions.
+A local/source install (no Setup.exe) is: `.\scripts\install.cmd -FromSource`
 
 ## Uninstall
 

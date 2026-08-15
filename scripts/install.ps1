@@ -138,7 +138,7 @@ if (-not $FromSource -and -not $SourceDir) {
 
 New-Item -ItemType Directory -Path $dest -Force | Out-Null
 
-$displayVersion = "1.1.0"
+$displayVersion = "1.2.0"
 $installedKind = "source"
 
 if ($FromSource -or $SourceDir) {
@@ -229,7 +229,15 @@ Add-UserPath $dest
 
 Register-Uninstall -Dir $dest -DisplayVersion $displayVersion -UninstallFile $uninstallDest
 Write-Ok "Installed $AppName $displayVersion ($installedKind)"
-Write-Host "Launch from a new terminal with:  tilesrus"
-Write-Host "Start Menu shortcut created. Uninstall from Apps and Features or:"
+Write-Host "Open it from the Start Menu, the desktop shortcut, or tilesrus."
+Write-Host "Uninstall from Apps and Features or:"
 Write-Host ('  powershell -ExecutionPolicy Bypass -File "{0}"' -f $uninstallDest)
 Write-Host ""
+
+$toLaunch = $null
+if (Test-Path $exe) { $toLaunch = $exe }
+elseif (Test-Path $launcher) { $toLaunch = $launcher }
+if ($toLaunch) {
+    Write-Step "Opening $AppName"
+    Start-Process -FilePath $toLaunch -WorkingDirectory $dest
+}
