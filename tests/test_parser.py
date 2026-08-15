@@ -127,6 +127,28 @@ def test_level_colon_tiles() -> None:
     assert events[0].payload["tile"].role == "I"
 
 
+def test_modern_log_deathroom_and_stream() -> None:
+    log = """8.010 Script [Info]: ThemedSquadOverlay.lua: Lobby::Host_StartMatch: launching level for SolNode69 (/Lotus/Levels/Proc/Grineer/GrineerOceanSurvival)
+8.020 Sys [Info]: Client loaded {"name":"SolNode69","quest":""} with MissionInfo:
+{"missionType":"MT_SURVIVAL","location":"SolNode69","levelOverride":"/Lotus/Levels/Proc/Grineer/GrineerOceanSurvival"}
+8.200 Game [Info]: DeathRoom tile selected: /Lotus/Levels/Proc/Grineer/GrineerOceanSurvival /Lotus/Levels/GrineerOcean/GrineerOceanIntermediateBotanyLab/
+8.210 Game [Info]: Removing streamed layer: /Lotus/Levels/GrineerOcean/GrineerOceanIntermediateBotanyLab/Scope
+"""
+    session = replay_text(log).session
+    assert any("BotanyLab" in name for name in session.layout.short_names())
+    assert session.grade.grade == "S"
+    assert session.survival.good_tile_found
+
+
+def test_ambience_expands_numbered_room() -> None:
+    parser = LineParser()
+    events = parser.feed(
+        "12.0 Snd [Error]: Buffer underrun streaming /Lotus/Sounds/Ambience/Grineer/GrnIntermediate3/LargeRockCrumbleG.wav\n"
+    )
+    tiles = [event.payload["tile"].short_name for event in events if event.kind == "tile"]
+    assert any("IntermediateThree" in name or "Intermediate3" in name for name in tiles)
+
+
 if __name__ == "__main__":
     test_disruption_sample()
     test_survival_sample()
@@ -135,4 +157,6 @@ if __name__ == "__main__":
     test_partial_disruption_waits()
     test_partial_survival_waits()
     test_level_colon_tiles()
+    test_modern_log_deathroom_and_stream()
+    test_ambience_expands_numbered_room()
     print("ok")

@@ -53,6 +53,7 @@ class RoomInfo:
     match: str = ""
     must_have: bool = False
     notes: str = ""
+    looks: str = ""
 
 
 @dataclass
@@ -160,4 +161,34 @@ def tileset_from_path(path: str) -> str:
 def short_tile_name(path: str) -> str:
     name = path.replace("\\", "/").split("/")[-1]
     name = re.sub(r"\.level$", "", name, flags=re.I)
-    return name
+    name = re.sub(r"/Scope$", "", name, flags=re.I)
+    if name.lower() == "scope":
+        parts = path.replace("\\", "/").rstrip("/").split("/")
+        if len(parts) >= 2 and parts[-1].lower() == "scope":
+            name = parts[-2]
+    return expand_numeric_name(name)
+
+
+_DIGIT_WORDS = {
+    "1": "One",
+    "2": "Two",
+    "3": "Three",
+    "4": "Four",
+    "5": "Five",
+    "6": "Six",
+    "7": "Seven",
+    "8": "Eight",
+    "9": "Nine",
+    "10": "Ten",
+    "11": "Eleven",
+}
+
+
+def expand_numeric_name(name: str) -> str:
+    match = re.search(r"(Intermediate)(\d+)$", name, re.I)
+    if not match:
+        return name
+    word = _DIGIT_WORDS.get(match.group(2))
+    if not word:
+        return name
+    return name[: match.start(2)] + word

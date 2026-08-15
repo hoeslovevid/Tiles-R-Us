@@ -12,7 +12,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "ee_log_path": "",
     "screenshot_dir": "",
     "read_from_end": True,
-    "always_on_top": True,
+    "always_on_top": False,
     "overlay": {
         "visible": True,
         "locked": False,

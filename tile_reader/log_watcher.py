@@ -7,7 +7,7 @@ from typing import Callable, Optional
 from .parser import LineParser, LogEvent
 
 
-CATCH_UP_BYTES = 8 * 1024 * 1024
+CATCH_UP_BYTES = 16 * 1024 * 1024
 READ_CHUNK = 64 * 1024
 POLL_SECONDS = 0.01
 EVENT_BATCH = 24
@@ -16,6 +16,8 @@ MISSION_MARKERS = (
     b"generating layout with segments",
     b"with MissionInfo:",
     b"HostRegion: added layer",
+    b"DeathRoom tile selected",
+    b"Removing streamed layer",
 )
 
 
@@ -84,10 +86,20 @@ class LogWatcher:
         except OSError:
             return start
         last = -1
+        skip = (b"PlayerShip", b"DojoHub", b"ZarimanHub", b"ClanDojo")
         for marker in MISSION_MARKERS:
-            idx = data.rfind(marker)
-            if idx > last:
-                last = idx
+            search_at = len(data)
+            while search_at > 0:
+                idx = data.rfind(marker, 0, search_at)
+                if idx < 0:
+                    break
+                snippet = data[idx : idx + 480]
+                if any(token in snippet for token in skip) and marker == b"launching level for":
+                    search_at = idx
+                    continue
+                if idx > last:
+                    last = idx
+                break
         if last < 0:
             return start
         nl = data.rfind(b"\n", 0, last)

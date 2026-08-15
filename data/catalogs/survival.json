@@ -13,7 +13,8 @@
           "match": "GrineerOceanIntermediateBotanyLab",
           "score": 8,
           "must_have": true,
-          "notes": "Polymer bundle farm room."
+          "notes": "Polymer bundle farm room.",
+          "looks": "Indoor Grineer lab with plant vats, glass tanks, and polymer crates. If you see the greenhouse/lab, stay."
         }
       ],
       "known_layouts": []
@@ -31,7 +32,8 @@
           "match": "InfestedReactor",
           "score": 8,
           "must_have": true,
-          "notes": "Nanospores farm room."
+          "notes": "Nanospores farm room.",
+          "looks": "Infested ship reactor chamber — glowing core, heavy infestation on the walls."
         }
       ],
       "known_layouts": []
@@ -49,7 +51,8 @@
           "match": "GrnConnectorFour",
           "score": 6,
           "must_have": true,
-          "notes": "Compact connector used as a camp / loot room."
+          "notes": "Compact connector used as a camp / loot room.",
+          "looks": "Short galleon connector with a tight camp spot. Look for Connector Four's compact T-shape."
         }
       ],
       "known_layouts": []

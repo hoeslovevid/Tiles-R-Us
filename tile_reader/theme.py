@@ -86,6 +86,22 @@ def apply(root: tk.Tk) -> None:
         background=[("active", SURFACE)],
         lightcolor=[("active", GOLD_HOVER)],
     )
+    style.configure("Dark.TNotebook", background=BG, borderwidth=0)
+    style.configure(
+        "Dark.TNotebook.Tab",
+        background=SURFACE_2,
+        foreground=MUTED,
+        padding=(16, 8),
+        font=font(9, "bold"),
+        borderwidth=0,
+        lightcolor=SURFACE_2,
+        darkcolor=SURFACE_2,
+    )
+    style.map(
+        "Dark.TNotebook.Tab",
+        background=[("selected", SURFACE), ("active", ELEVATED)],
+        foreground=[("selected", GOLD), ("active", TEXT)],
+    )
 
 
 def round_corners(window: tk.Misc, preference: int = 2) -> None:

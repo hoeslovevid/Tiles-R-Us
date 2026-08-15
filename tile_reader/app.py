@@ -16,7 +16,7 @@ from .log_watcher import LogWatcher
 from .meta import APP_NAME, VERSION
 from .models import MissionKind, Recommendation, Tile
 from .overlay import OverlayWindow
-from .parser import LineParser
+from .parser import LineParser, parse_latest_mission
 from .paths import default_ee_log, default_screenshot_dir, sample_dir
 from .screenshot_watcher import ScreenshotWatcher
 from .session import SessionController
@@ -51,6 +51,8 @@ class TileReaderApp:
         self._update_busy = False
         self._progress_win: Optional[tk.Toplevel] = None
         self._progress_label: Optional[tk.Label] = None
+        self._overlay_pulse = 0
+        self._guide_key = None
 
         self._build()
         opacity = float(self.cfg["overlay"].get("opacity", 0.92))
@@ -75,8 +77,8 @@ class TileReaderApp:
     def _build(self) -> None:
         theme.apply(self.root)
         self.root.title(f"{APP_NAME} {VERSION}")
-        self.root.geometry("1080x740")
-        self.root.minsize(920, 640)
+        self.root.geometry("1120x780")
+        self.root.minsize(960, 680)
         theme.round_corners(self.root)
         if self.cfg.get("always_on_top"):
             self.root.attributes("-topmost", True)
@@ -201,21 +203,37 @@ class TileReaderApp:
         )
         self.tracker_text.pack(fill="x")
 
-        picker = theme.card(right, "Mark rooms you see", fill="both", expand=True, pady=(0, 12))
+        picker = theme.card(right, "", fill="both", expand=True, pady=(0, 12))
+        notebook = ttk.Notebook(picker, style="Dark.TNotebook")
+        notebook.pack(fill="both", expand=True)
+        mark_tab = tk.Frame(notebook, bg=theme.SURFACE)
+        guide_tab = tk.Frame(notebook, bg=theme.SURFACE)
+        notebook.add(mark_tab, text="  Mark rooms  ")
+        notebook.add(guide_tab, text="  Tile guide  ")
         tk.Label(
-            picker,
-            text="If EE.log hides tiles, toggle the rooms in front of you.",
+            mark_tab,
+            text="Auto-scan reads EE.log. Toggle only if a room was missed.",
             bg=theme.SURFACE,
             fg=theme.MUTED,
             font=theme.font(9),
             anchor="w",
             wraplength=300,
             justify="left",
-        ).pack(fill="x")
-        picker_scroll = tk.Frame(picker, bg=theme.SURFACE)
-        picker_scroll.pack(fill="both", expand=True, pady=(8, 0))
-        self.picker_frame = tk.Frame(picker_scroll, bg=theme.SURFACE)
-        self.picker_frame.pack(fill="both", expand=True)
+        ).pack(fill="x", padx=4, pady=(8, 0))
+        self.picker_frame = tk.Frame(mark_tab, bg=theme.SURFACE)
+        self.picker_frame.pack(fill="both", expand=True, pady=(8, 0), padx=4)
+        tk.Label(
+            guide_tab,
+            text="What each room looks like for this node.",
+            bg=theme.SURFACE,
+            fg=theme.MUTED,
+            font=theme.font(9),
+            anchor="w",
+            wraplength=300,
+            justify="left",
+        ).pack(fill="x", padx=4, pady=(8, 0))
+        self.guide_frame = tk.Frame(guide_tab, bg=theme.SURFACE)
+        self.guide_frame.pack(fill="both", expand=True, pady=(8, 0), padx=4)
 
         settings = theme.card(right, "Overlay & controls", fill="x")
         self.overlay_var = tk.BooleanVar(value=bool(self.cfg["overlay"].get("visible", True)))
@@ -258,7 +276,7 @@ class TileReaderApp:
         btn_row2 = tk.Frame(settings, bg=theme.SURFACE)
         btn_row2.pack(fill="x", pady=(6, 0))
         theme.button(btn_row2, "Open EE.log…", self._pick_log).pack(side="left", padx=(0, 6))
-        theme.button(btn_row2, "Replay log", self._replay_log).pack(side="left")
+        theme.button(btn_row2, "Rescan mission", self._rescan_mission).pack(side="left")
         btn_row3 = tk.Frame(settings, bg=theme.SURFACE)
         btn_row3.pack(fill="x", pady=(6, 0))
         theme.button(btn_row3, "Report a bug", self._report_bug).pack(side="left", padx=(0, 6))
@@ -315,11 +333,18 @@ class TileReaderApp:
                     self._on_update_progress(item[1], item[2])
                 elif kind == "update_ready":
                     self._on_update_ready(item[1])
+                elif kind == "rescan":
+                    self._on_rescan(item[1])
         except queue.Empty:
             pass
         if changed:
             self.store.flush_discovered()
             self._refresh()
+        self._overlay_pulse += 1
+        if self._overlay_pulse >= 40:
+            self._overlay_pulse = 0
+            if self.overlay and self.overlay_var.get():
+                self.overlay.keep_on_top()
         self.root.after(16, self._drain)
 
     def _refresh(self) -> None:
@@ -465,6 +490,7 @@ class TileReaderApp:
             self._picker_force = False
             self._picker_key = key
             self._rebuild_picker()
+            self._rebuild_guide()
             return
         if not catalog or not self.room_vars:
             return
@@ -539,6 +565,66 @@ class TileReaderApp:
                 cursor="hand2",
             ).pack(side="right", padx=4)
 
+    def _rebuild_guide(self) -> None:
+        mission = self.controller.session.mission
+        catalog = self.store.catalog_for(mission.node_id, mission.kind, mission.level_override)
+        for child in self.guide_frame.winfo_children():
+            child.destroy()
+        if not catalog:
+            tk.Label(
+                self.guide_frame,
+                text="Queue a Disruption or Survival node to see its room guide.",
+                bg=theme.SURFACE,
+                fg=theme.MUTED,
+                font=theme.font(9),
+                wraplength=300,
+                justify="left",
+            ).pack(anchor="w")
+            return
+        if catalog.notes:
+            tk.Label(
+                self.guide_frame,
+                text=catalog.notes,
+                bg=theme.SURFACE,
+                fg=theme.MUTED,
+                font=theme.font(9),
+                wraplength=300,
+                justify="left",
+            ).pack(anchor="w", pady=(0, 8))
+        if not catalog.rooms:
+            tk.Label(
+                self.guide_frame,
+                text="No named rooms in this catalog yet. Auto-scan will save new names when the log still prints them.",
+                bg=theme.SURFACE,
+                fg=theme.MUTED,
+                font=theme.font(9),
+                wraplength=300,
+                justify="left",
+            ).pack(anchor="w")
+            return
+        for index, room in enumerate(catalog.rooms):
+            bg = theme.ELEVATED if index % 2 == 0 else theme.SURFACE_2
+            card = tk.Frame(self.guide_frame, bg=bg)
+            card.pack(fill="x", pady=3)
+            header = tk.Frame(card, bg=bg)
+            header.pack(fill="x", padx=8, pady=(8, 0))
+            tk.Label(header, text=room.display, bg=bg, fg=theme.TEXT, font=theme.font(10, "bold"), anchor="w").pack(
+                side="left"
+            )
+            score_fg = theme.GREEN if room.score > 0 else theme.RED if room.score < 0 else theme.MUTED
+            tk.Label(header, text=f"{room.score:+d}", bg=bg, fg=score_fg, font=theme.font(9, "bold")).pack(side="right")
+            body = room.looks or room.notes or "No landmark notes yet."
+            tk.Label(
+                card,
+                text=body,
+                bg=bg,
+                fg=theme.MUTED,
+                font=theme.font(9),
+                wraplength=280,
+                justify="left",
+                anchor="w",
+            ).pack(fill="x", padx=8, pady=(2, 8))
+
     def _manual_tiles_changed(self) -> None:
         if self._ignore_picker:
             return
@@ -557,11 +643,40 @@ class TileReaderApp:
         self.controller._regrade()
         self._refresh()
 
+    def _rescan_mission(self) -> None:
+        path = Path(self.cfg.get("ee_log_path") or default_ee_log())
+        if not path.exists():
+            messagebox.showerror("No log", f"Could not find {path}")
+            return
+        self.controller.session.status = "Rescanning current mission from EE.log…"
+        self.status_pill.configure(text="Rescanning…", fg=theme.YELLOW, bg=theme.WAIT_BG)
+
+        def worker() -> None:
+            try:
+                events = parse_latest_mission(path)
+                self.events.put(("rescan", events))
+            except Exception as exc:
+                self.events.put(("update_error", f"Rescan failed: {exc}", False))
+
+        threading.Thread(target=worker, name="TilesRUsRescan", daemon=True).start()
+
+    def _on_rescan(self, events: list) -> None:
+        self.parser.reset()
+        self.controller.session.reset_mission()
+        self._picker_force = True
+        for event in events:
+            self.controller.handle(event)
+        self.controller.session.status = "Rescanned the latest mission in EE.log"
+        self._refresh()
+
     def _toggle_overlay(self) -> None:
         visible = self.overlay_var.get()
         self.cfg["overlay"]["visible"] = visible
         save_config(self.cfg)
-        self.overlay.set_visible(visible)
+        if self.overlay:
+            self.overlay.set_visible(visible)
+            if visible:
+                self.overlay.keep_on_top()
 
     def _toggle_lock(self) -> None:
         locked = self.overlay_lock_var.get()

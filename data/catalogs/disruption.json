@@ -7,12 +7,12 @@
       "title": "Kappa / Ur — Galleon Disruption",
       "notes": "Disruption uses two main intermediate rooms. Mark the pair you spawned. Toggle Reject on rooms you personally abort.",
       "rooms": [
-        {"id": "One", "display": "Intermediate 1", "match": "IntermediateOne", "score": 0, "tags": ["mixed"]},
-        {"id": "Three", "display": "Intermediate 3", "match": "IntermediateThree", "score": 1, "tags": ["open"]},
-        {"id": "Four", "display": "Intermediate 4", "match": "IntermediateFour", "score": 2, "tags": ["compact"]},
-        {"id": "Six", "display": "Intermediate 6", "match": "IntermediateSix", "score": 2, "tags": ["compact"]},
-        {"id": "Seven", "display": "Intermediate 7", "match": "IntermediateSeven", "score": -1, "tags": ["slow"]},
-        {"id": "Eight", "display": "Intermediate 8", "match": "IntermediateEight", "score": -2, "tags": ["maze"]}
+        {"id": "One", "display": "Intermediate 1", "match": "IntermediateOne", "score": 0, "tags": ["mixed"], "looks": "Mixed sightlines, crate stacks, a bit of clutter. Average demo spacing."},
+        {"id": "Three", "display": "Intermediate 3", "match": "IntermediateThree", "score": 1, "tags": ["open"], "looks": "Open hangar-style room. Long sightlines, easy to read demos from mid."},
+        {"id": "Four", "display": "Intermediate 4", "match": "IntermediateFour", "score": 2, "tags": ["compact"], "looks": "Tight compact room. Demos sit close together — a common keep with 6."},
+        {"id": "Six", "display": "Intermediate 6", "match": "IntermediateSix", "score": 2, "tags": ["compact"], "looks": "Compact two-level galleon room. Short paths between conduits."},
+        {"id": "Seven", "display": "Intermediate 7", "match": "IntermediateSeven", "score": -1, "tags": ["slow"], "looks": "Longer snaking hall. Demos feel spread out; slower keys."},
+        {"id": "Eight", "display": "Intermediate 8", "match": "IntermediateEight", "score": -2, "tags": ["maze"], "looks": "Maze-like with extra corners and verticality. Easy to lose a demo."}
       ],
       "known_layouts": [
         {"id": "four-six", "tiles": ["Four", "Six"], "grade": "S", "score": 9, "notes": "Compact pair — common keep."},
@@ -26,14 +26,14 @@
       "title": "Apollo — Lua Disruption",
       "notes": "Apollo's two MoonInt rooms decide whether the layout is worth staying.",
       "rooms": [
-        {"id": "BotGarden", "display": "Botanical Garden", "match": "BotGarden", "score": 1, "tags": ["open"]},
-        {"id": "Cloister", "display": "Cloister", "match": "Cloister", "score": 0, "tags": ["mixed"]},
-        {"id": "Endurance", "display": "Endurance", "match": "Endurance", "score": 2, "tags": ["compact"]},
-        {"id": "HallsOfJudgement", "display": "Halls of Judgement", "match": "HallsOfJudgement", "score": -1, "tags": ["large"]},
-        {"id": "Power", "display": "Power", "match": "Power", "score": 1, "tags": ["open"]},
-        {"id": "RuinedPiaza", "display": "Ruined Plaza", "match": "RuinedPiaza", "score": 2, "tags": ["compact"]},
-        {"id": "Stealth", "display": "Stealth", "match": "Stealth", "score": 0, "tags": ["mixed"]},
-        {"id": "Speed", "display": "Speed / Dent", "match": "Speed", "score": -2, "tags": ["awkward"]}
+        {"id": "BotGarden", "display": "Botanical Garden", "match": "BotGarden", "score": 1, "tags": ["open"], "looks": "Moon garden with planters and open floor. Easy to see demos."},
+        {"id": "Cloister", "display": "Cloister", "match": "Cloister", "score": 0, "tags": ["mixed"], "looks": "Arched cloister halls. Mixed corners, average spacing."},
+        {"id": "Endurance", "display": "Endurance", "match": "Endurance", "score": 2, "tags": ["compact"], "looks": "Short Lua combat room. Compact, readable, often a keep."},
+        {"id": "HallsOfJudgement", "display": "Halls of Judgement", "match": "HallsOfJudgement", "score": -1, "tags": ["large"], "looks": "Huge hall. Long sprints between conduits."},
+        {"id": "Power", "display": "Power", "match": "Power", "score": 1, "tags": ["open"], "looks": "Power-core Lua room with a central machine and open sides."},
+        {"id": "RuinedPiaza", "display": "Ruined Plaza", "match": "RuinedPiaza", "score": 2, "tags": ["compact"], "looks": "Broken plaza with a clear center. Short demo paths."},
+        {"id": "Stealth", "display": "Stealth", "match": "Stealth", "score": 0, "tags": ["mixed"], "looks": "Dimmer Lua interior with more cover. Mixed readability."},
+        {"id": "Speed", "display": "Speed / Dent", "match": "Speed", "score": -2, "tags": ["awkward"], "looks": "Awkward dented layout. Bad demo angles; often aborted."}
       ],
       "known_layouts": [
         {"id": "endurance-plaza", "tiles": ["Endurance", "RuinedPiaza"], "grade": "S", "score": 9, "notes": "Short, readable pair."}
@@ -46,16 +46,16 @@
       "title": "Olympus — Mars Disruption",
       "notes": "Olympus can pull several CmpIntermediate rooms. Reject the ones you hate running.",
       "rooms": [
-        {"id": "Intermediate01", "display": "Camp 01", "match": "Intermediate01", "score": 1, "tags": []},
-        {"id": "Intermediate02", "display": "Camp 02", "match": "Intermediate02", "score": 1, "tags": []},
-        {"id": "Intermediate03", "display": "Camp 03", "match": "Intermediate03", "score": 0, "tags": []},
-        {"id": "Intermediate04", "display": "Camp 04", "match": "Intermediate04", "score": 0, "tags": []},
-        {"id": "Intermediate05", "display": "Camp 05", "match": "Intermediate05", "score": -1, "tags": []},
-        {"id": "Intermediate06", "display": "Camp 06", "match": "Intermediate06", "score": -1, "tags": []},
-        {"id": "Intermediate10", "display": "Camp 10", "match": "Intermediate10", "score": 2, "tags": ["compact"]},
-        {"id": "Intermediate11", "display": "Camp 11", "match": "Intermediate11", "score": 1, "tags": []},
-        {"id": "Assassinate", "display": "Assassinate", "match": "Assassinate", "score": -2, "tags": ["awkward"]},
-        {"id": "Connector03", "display": "Connector 03", "match": "Connector03", "score": -1, "tags": ["connector"]}
+        {"id": "Intermediate01", "display": "Camp 01", "match": "Intermediate01", "score": 1, "tags": [], "looks": "Small settlement yard. Decent demo spacing."},
+        {"id": "Intermediate02", "display": "Camp 02", "match": "Intermediate02", "score": 1, "tags": [], "looks": "Open camp with a few buildings. Readable from mid."},
+        {"id": "Intermediate03", "display": "Camp 03", "match": "Intermediate03", "score": 0, "tags": [], "looks": "Average Mars camp. Mixed cover."},
+        {"id": "Intermediate04", "display": "Camp 04", "match": "Intermediate04", "score": 0, "tags": [], "looks": "Slightly busier camp. Watch extra corners."},
+        {"id": "Intermediate05", "display": "Camp 05", "match": "Intermediate05", "score": -1, "tags": [], "looks": "Larger dusty yard. Longer runs between keys."},
+        {"id": "Intermediate06", "display": "Camp 06", "match": "Intermediate06", "score": -1, "tags": [], "looks": "Spread-out camp. Easy to lose a conduit."},
+        {"id": "Intermediate10", "display": "Camp 10", "match": "Intermediate10", "score": 2, "tags": ["compact"], "looks": "Compact settlement tile. Short paths — usually a keep."},
+        {"id": "Intermediate11", "display": "Camp 11", "match": "Intermediate11", "score": 1, "tags": [], "looks": "Readable camp with a clear center."},
+        {"id": "Assassinate", "display": "Assassinate", "match": "Assassinate", "score": -2, "tags": ["awkward"], "looks": "Boss-arena style tile. Awkward for Disruption keys."},
+        {"id": "Connector03", "display": "Connector 03", "match": "Connector03", "score": -1, "tags": ["connector"], "looks": "Long connector hallway used as a combat room. Slow."}
       ],
       "known_layouts": []
     },

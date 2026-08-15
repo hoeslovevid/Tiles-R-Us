@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Optional
 
 from .catalog import short_tile_name, tileset_from_path
@@ -34,7 +35,13 @@ LEVEL_COLON_RE = re.compile(r"Sys \[Info\]:\s*Level:\s*(/Lotus/Levels/[^\s,]+)",
 GAME_LEVEL_RE = re.compile(r"Game \[Info\]:\s*Level=(/Lotus/Levels/[^\s,]+)", re.I)
 OPEN_LEVEL_RE = re.compile(r"OpenLevel\s*-\s*(/Lotus/\S+)", re.I)
 CLIENT_LOADED_RE = re.compile(r'Client loaded \{"name":"([^"]+)"')
+HOST_LOADING_RE = re.compile(r'Host loading \{[^}\n]*"name":"([^"]+)"')
 ABORT_RE = re.compile(r"Abort:\s*host/no session", re.I)
+LOTUS_PATH_RE = re.compile(r"/Lotus/Levels/[A-Za-z0-9_./-]+")
+AMBIENCE_RE = re.compile(r"/Lotus/Sounds/Ambience/[^/\s]+/([A-Za-z0-9_]+)")
+DEATHROOM_RE = re.compile(r"DeathRoom tile selected:\s+\S+\s+(/Lotus/Levels/\S+)", re.I)
+STREAM_LAYER_RE = re.compile(r"streamed layer:\s*(/Lotus/Levels/\S+)", re.I)
+REQUIRED_OBJECT_RE = re.compile(r"Required by object\s+(/Lotus/Levels/\S+)", re.I)
 
 DISRUPTION_INTRO = "SentientArtifactMission.lua: Disruption: Intro door"
 DISRUPTION_KEY_INSERT = "SentientArtifactMission.lua: Disruption: Starting defense for artifact"
@@ -61,6 +68,8 @@ SKIP_TILE_HINTS = (
     "/interface/",
     "clandojo",
     "hub/",
+    "darksectors",
+    "/episodes/",
 )
 
 INTERESTING_NEEDLES = (
@@ -91,6 +100,10 @@ INTERESTING_NEEDLES = (
     "E:/Lotus/",
     "D:/Lotus/",
     ":/Lotus/Levels/",
+    "DeathRoom tile selected",
+    "streamed layer",
+    "Required by object /Lotus/Levels",
+    "/Lotus/Sounds/Ambience/",
 )
 
 
@@ -114,9 +127,18 @@ def _line_is_interesting(line: str) -> bool:
     return any(needle in line for needle in INTERESTING_NEEDLES)
 
 
+def _normalize_level_path(path: str) -> str:
+    path = path.strip().rstrip(".,;\"'/")
+    path = re.sub(r"/Scope$", "", path, flags=re.I)
+    path = re.sub(r"\.level$", "", path, flags=re.I)
+    return path
+
+
 def _should_skip_tile_path(path: str) -> bool:
     lower = path.lower()
     if lower.endswith(".lp"):
+        return True
+    if "/prefabs/" in lower:
         return True
     return any(hint in lower for hint in SKIP_TILE_HINTS)
 
@@ -174,7 +196,7 @@ class LineParser:
 
         if "with MissionInfo:" in line:
             after = line.split("with MissionInfo:", 1)[1].strip()
-            loaded = CLIENT_LOADED_RE.search(line)
+            loaded = CLIENT_LOADED_RE.search(line) or HOST_LOADING_RE.search(line)
             if loaded:
                 self._pending_node = loaded.group(1)
             if after.startswith("{"):
@@ -222,7 +244,7 @@ class LineParser:
                 )
             )
 
-        skip_tiles = "ResourceLoader" in line
+        skip_tiles = "ResourceLoader" in line or "Resloader" in line
         if not skip_tiles:
             role = TILE_ROLE_RE.search(line)
             if role:
@@ -243,6 +265,26 @@ class LineParser:
             game_level = GAME_LEVEL_RE.search(line)
             if game_level:
                 self._add_tile_event(events, ts, "Layer", game_level.group(1), "log")
+
+            death = DEATHROOM_RE.search(line)
+            if death:
+                self._add_tile_event(events, ts, "Layer", death.group(1), "log")
+
+            streamed = STREAM_LAYER_RE.search(line)
+            if streamed:
+                self._add_tile_event(events, ts, "Layer", streamed.group(1), "log")
+
+            required = REQUIRED_OBJECT_RE.search(line)
+            if required:
+                self._add_tile_event(events, ts, "Layer", required.group(1), "log")
+
+            if not any((role, layer, host_region, level_colon, game_level, death, streamed, required)):
+                for path in LOTUS_PATH_RE.findall(line):
+                    self._add_tile_event(events, ts, "Layer", path, "log")
+
+            ambience = AMBIENCE_RE.search(line)
+            if ambience:
+                self._add_tile_event(events, ts, "I", f"/Lotus/Levels/_Sound/{ambience.group(1)}", "log")
 
         if "Layer /Lotus/Levels/Backdrops" in line or "Sb: /Lotus/Levels/Backdrops" in line:
             events.append(LogEvent("layout_complete", ts, {}))
@@ -281,7 +323,7 @@ class LineParser:
         return events
 
     def _add_tile_event(self, events: list[LogEvent], ts: float, role: str, path: str, source: str) -> None:
-        path = path.rstrip(".,;")
+        path = _normalize_level_path(path)
         if _should_skip_tile_path(path):
             return
         events.append(
@@ -338,3 +380,36 @@ def _maybe_int(value: Any) -> Optional[int]:
 def _trailing_int(line: str) -> int:
     match = re.search(r"(\d+)\s*$", line.strip())
     return int(match.group(1)) if match else 0
+
+
+HUB_SNIPPETS = (b"PlayerShip", b"DojoHub", b"ZarimanHub", b"ClanDojo")
+
+
+def parse_latest_mission(path: Path, window: int = 16 * 1024 * 1024) -> list[LogEvent]:
+    data = Path(path).read_bytes()
+    if len(data) > window:
+        data = data[-window:]
+    last = -1
+    for marker in (b"launching level for", b"with MissionInfo:", b"DeathRoom tile selected"):
+        search_at = len(data)
+        while search_at > 0:
+            idx = data.rfind(marker, 0, search_at)
+            if idx < 0:
+                break
+            snippet = data[idx : idx + 480]
+            if marker == b"launching level for" and any(token in snippet for token in HUB_SNIPPETS):
+                search_at = idx
+                continue
+            if idx > last:
+                last = idx
+            break
+    if last < 0:
+        last = 0
+    nl = data.rfind(b"\n", 0, last)
+    start = nl + 1 if nl >= 0 else last
+    text = data[start:].decode("utf-8", errors="replace")
+    parser = LineParser()
+    events: list[LogEvent] = []
+    for line in text.splitlines(True):
+        events.extend(parser.feed(line))
+    return events
