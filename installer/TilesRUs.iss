@@ -1,6 +1,6 @@
 #define MyAppName "Tiles R Us"
 #ifndef MyAppVersion
-  #define MyAppVersion "1.7.0"
+  #define MyAppVersion "1.8.0"
 #endif
 #define MyAppPublisher "Tiles R Us"
 #define MyAppId "TilesRUs"
@@ -19,6 +19,7 @@ OutputBaseFilename=TilesRUs-Setup
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile=..\assets\app.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 CloseApplications=yes
 ChangesEnvironment=yes

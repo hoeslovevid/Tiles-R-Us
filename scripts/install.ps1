@@ -50,12 +50,13 @@ function Add-UserPath([string]$Dir) {
     }
 }
 
-function New-Shortcut([string]$Path, [string]$Target, [string]$WorkingDir, [string]$Arguments = "") {
+function New-Shortcut([string]$Path, [string]$Target, [string]$WorkingDir, [string]$Arguments = "", [string]$Icon = "") {
     $shell = New-Object -ComObject WScript.Shell
     $shortcut = $shell.CreateShortcut($Path)
     $shortcut.TargetPath = $Target
     $shortcut.WorkingDirectory = $WorkingDir
     if ($Arguments) { $shortcut.Arguments = $Arguments }
+    if ($Icon -and (Test-Path $Icon)) { $shortcut.IconLocation = $Icon }
     $shortcut.WindowStyle = 1
     $shortcut.Save()
 }
@@ -73,8 +74,11 @@ function Register-Uninstall([string]$Dir, [string]$DisplayVersion, [string]$Unin
     Set-ItemProperty -Path $reg -Name "NoModify" -Value 1 -Type DWord
     Set-ItemProperty -Path $reg -Name "NoRepair" -Value 1 -Type DWord
     $exe = Join-Path $Dir $ExeName
+    $ico = Join-Path $Dir "assets\app.ico"
     if (Test-Path $exe) {
         Set-ItemProperty -Path $reg -Name "DisplayIcon" -Value $exe
+    } elseif (Test-Path $ico) {
+        Set-ItemProperty -Path $reg -Name "DisplayIcon" -Value $ico
     }
 }
 
@@ -138,13 +142,13 @@ if (-not $FromSource -and -not $SourceDir) {
 
 New-Item -ItemType Directory -Path $dest -Force | Out-Null
 
-$displayVersion = "1.7.0"
+$displayVersion = "1.8.0"
 $installedKind = "source"
 
 if ($FromSource -or $SourceDir) {
     if (-not $SourceDir) { $SourceDir = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path }
     Write-Step "Installing from source: $SourceDir"
-    $copyNames = @("main.py", "run.bat", "README.md", "requirements.txt", "tile_reader", "data", "scripts", "tilesrus.cmd", "tiles-r-us.cmd")
+    $copyNames = @("main.py", "run.bat", "README.md", "requirements.txt", "tile_reader", "data", "assets", "scripts", "tilesrus.cmd", "tiles-r-us.cmd")
     foreach ($name in $copyNames) {
         $from = Join-Path $SourceDir $name
         if (Test-Path $from) {
@@ -210,20 +214,23 @@ New-Item -ItemType Directory -Path $startMenu -Force | Out-Null
 $startShortcut = Join-Path $startMenu "$AppName.lnk"
 $desktopShortcut = Join-Path ([Environment]::GetFolderPath("Desktop")) "$AppName.lnk"
 
+$icon = Join-Path $dest "assets\app.ico"
+if (-not (Test-Path $icon)) { $icon = "" }
+
 if (Test-Path $exe) {
     Write-Step "Creating shortcuts to $ExeName"
-    New-Shortcut -Path $startShortcut -Target $exe -WorkingDir $dest
+    New-Shortcut -Path $startShortcut -Target $exe -WorkingDir $dest -Icon $exe
     if (-not $NoDesktopShortcut) {
-        New-Shortcut -Path $desktopShortcut -Target $exe -WorkingDir $dest
+        New-Shortcut -Path $desktopShortcut -Target $exe -WorkingDir $dest -Icon $exe
     }
 } elseif ($python) {
     $main = Join-Path $dest "main.py"
     if (-not (Test-Path $main)) { throw "Install did not contain main.py or $ExeName." }
     Write-Step "Creating shortcuts via tilesrus.cmd"
     if (-not (Test-Path $launcher)) { throw "tilesrus.cmd was missing from the install." }
-    New-Shortcut -Path $startShortcut -Target $launcher -WorkingDir $dest
+    New-Shortcut -Path $startShortcut -Target $launcher -WorkingDir $dest -Icon $icon
     if (-not $NoDesktopShortcut) {
-        New-Shortcut -Path $desktopShortcut -Target $launcher -WorkingDir $dest
+        New-Shortcut -Path $desktopShortcut -Target $launcher -WorkingDir $dest -Icon $icon
     }
 } else {
     throw "Python was not found and this install has no $ExeName. Install Python 3.11+ or use a GitHub Release."

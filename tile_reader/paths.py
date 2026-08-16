@@ -56,3 +56,18 @@ def user_config_path() -> Path:
 
 def discovered_tiles_path() -> Path:
     return runtime_root() / "discovered_tiles.json"
+
+
+def assets_dir() -> Path:
+    return resource_root() / "assets"
+
+
+def app_icon_path() -> Path:
+    ico = assets_dir() / "app.ico"
+    if ico.exists():
+        return ico
+    return assets_dir() / "logo-icon.png"
+
+
+def wordmark_path() -> Path:
+    return assets_dir() / "logo-wordmark.png"

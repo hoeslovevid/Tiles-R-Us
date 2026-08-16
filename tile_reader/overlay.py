@@ -4,10 +4,12 @@ import ctypes
 from typing import Callable, Optional
 
 from PySide6.QtCore import Qt, QPoint
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from . import theme
 from .models import GradeResult, Mission, Recommendation
+from .paths import app_icon_path
 
 
 GWL_EXSTYLE = -20
@@ -50,6 +52,9 @@ class OverlayWindow(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
         self.setFixedSize(480, 132)
         self.move(x, y)
+        icon = QIcon(str(app_icon_path()))
+        if not icon.isNull():
+            self.setWindowIcon(icon)
 
         self.setStyleSheet(
             f"OverlayWindow {{ background: {theme.SURFACE}; border: 1px solid {theme.GOLD_DIM}; }}"

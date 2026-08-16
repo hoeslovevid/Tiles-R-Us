@@ -12,7 +12,7 @@ a = Analysis(
     [str(ROOT / "main.py")],
     pathex=[str(ROOT)],
     binaries=pyside_binaries,
-    datas=[(str(ROOT / "data"), "data"), *pyside_datas],
+    datas=[(str(ROOT / "data"), "data"), (str(ROOT / "assets"), "assets"), *pyside_datas],
     hiddenimports=pyside_hidden,
     hookspath=[],
     hooksconfig={},
@@ -34,6 +34,7 @@ exe = EXE(
     upx=True,
     console=False,
     disable_windowed_traceback=False,
+    icon=str(ROOT / "assets" / "app.ico"),
 )
 
 coll = COLLECT(

@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QAction
+from PySide6.QtGui import QAction, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -35,7 +35,7 @@ from .meta import APP_NAME, VERSION
 from .models import MissionKind, Recommendation, Tile
 from .overlay import OverlayWindow
 from .parser import LineParser, parse_latest_mission
-from .paths import default_ee_log, default_screenshot_dir, sample_dir
+from .paths import app_icon_path, default_ee_log, default_screenshot_dir, sample_dir, wordmark_path
 from .screenshot_watcher import ScreenshotWatcher
 from .session import SessionController
 from .updater import (
@@ -154,6 +154,9 @@ class Companion(QMainWindow):
 
     def _build(self) -> None:
         self.setWindowTitle(f"{APP_NAME} {VERSION}")
+        icon = QIcon(str(app_icon_path()))
+        if not icon.isNull():
+            self.setWindowIcon(icon)
         self.setMinimumSize(420, 720)
         self.resize(460, 860)
         if self.cfg.get("always_on_top"):
@@ -166,11 +169,17 @@ class Companion(QMainWindow):
         layout.setSpacing(0)
 
         header = QHBoxLayout()
-        brand = QLabel(APP_NAME.upper())
-        brand.setStyleSheet(
-            f"color: {theme.GOLD}; font-size: 15px; font-weight: 700; letter-spacing: 2px;"
-        )
-        header.addWidget(brand)
+        mark = QLabel()
+        mark.setObjectName("wordmark")
+        pix = QPixmap(str(wordmark_path()))
+        if not pix.isNull():
+            mark.setPixmap(pix.scaledToHeight(36, Qt.TransformationMode.SmoothTransformation))
+        else:
+            mark.setText(APP_NAME)
+            mark.setStyleSheet(
+                f"color: {theme.GOLD}; font-size: 15px; font-weight: 700; letter-spacing: 2px;"
+            )
+        header.addWidget(mark)
         self.version_chip = QPushButton(f"v{VERSION}")
         self.version_chip.setObjectName("ghost")
         self.version_chip.clicked.connect(lambda: self._check_for_updates(False))
@@ -739,6 +748,9 @@ class Companion(QMainWindow):
 def run() -> None:
     app = QApplication.instance() or QApplication([])
     app.setApplicationName(APP_NAME)
+    icon = QIcon(str(app_icon_path()))
+    if not icon.isNull():
+        app.setWindowIcon(icon)
     theme.apply(app)
     window = Companion()
     window.show()

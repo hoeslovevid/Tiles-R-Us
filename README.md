@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo-icon.png" width="160" alt="Tiles R Us">
+</p>
+
 # Tiles R Us
 
 Warframe overlay that reads the current Disruption or Survival layout and grades it against a local catalog of known rooms.
