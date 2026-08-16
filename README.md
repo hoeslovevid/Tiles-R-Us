@@ -64,7 +64,7 @@ The app tails `%LocalAppData%\Warframe\EE.log`. It still reads mission type, nod
 
 Tile *names* were hidden by Digital Extremes in Update 37. If the log no longer dumps rooms, use one of these:
 
-- **Mark rooms you see** in the right-hand picker (Kappa, Ur, Apollo, Olympus, Ophelia, Zabala, Assur).
+- **Mark rooms you see** in the right-hand picker (Kappa, Ur, Apollo, Olympus, Armatus, Ophelia, Zabala, Assur, Persto, Terrorem).
 - Take an in-game **F6** screenshot. If the JPEG still embeds the current tile path, the app picks it up from `Pictures\Warframe`.
 - Click **Demo: Disruption** / **Demo: Survival** to see a graded layout without loading a mission.
 
@@ -74,8 +74,8 @@ Toggle **Reject** on rooms you personally abort. Those choices are saved in `con
 
 | Mode | What gets graded |
 |---|---|
-| Disruption | The two main combat rooms (Kappa/Ur numbers, Apollo names, Olympus camp rooms), plus optional known pairs like Four+Six |
-| Survival | Must-have farm rooms: Botany Lab (Ophelia / polymer), Infested Reactor (Zabala / nanospores), Connector Four (Assur) |
+| Disruption | The two main combat rooms (Kappa/Ur numbers, Apollo names, Olympus camp rooms, Armatus lab landmarks), plus optional known pairs like Four+Six |
+| Survival | Must-have farm rooms: Botany Lab (Ophelia / polymer), Infested Reactor (Zabala / nanospores), Connector Four (Assur). Persto uses Albrecht landmarks; Terrorem uses Derelict landmarks — mark the room you spawned. |
 
 Catalogs live in `data/catalogs/`. Edit scores, add rooms, or add `known_layouts` there. Newly seen tile names are appended to `discovered_tiles.json`.
 

@@ -65,6 +65,44 @@
       "notes": "No must-have farm room yet. Grade uses compactness and any rooms you add.",
       "rooms": [],
       "known_layouts": []
+    },
+    {
+      "key": "albrecht_survival",
+      "kind": "survival",
+      "tileset": "Albrecht's Laboratories",
+      "title": "Persto — Albrecht Survival",
+      "notes": "Same lab tiles as Armatus. No single must-have farm room — mark the room you spawned and reject ones you abort.",
+      "rooms": [
+        {"id": "BrainRoom", "display": "Brain Room", "match": "Brain", "score": 2, "must_have": false, "looks": "Massive brain held above a Vessel head. Two stories; a ceiling vent left of the brain leads to a hidden chamber."},
+        {"id": "LibraryAltar", "display": "Library / Grimoire Altar", "match": "Library", "score": 2, "must_have": false, "looks": "Two-floor cathedral library. Grimoire Altar at the back centre — matching Requiem glyphs on the walls open the floor."},
+        {"id": "ElectricPendulum", "display": "Electric Pendulum", "match": "Pendulum", "score": 2, "must_have": false, "looks": "Huge pendulum wreathed in electricity. Crystals in alcoves at each swing extreme; a Pom-2 opens the far yellow door."},
+        {"id": "ElectricTowers", "display": "Electric Towers", "match": "ElectricTower", "score": 2, "must_have": false, "looks": "Electric towers by the loading door. Yellow locked door on the right; Necramech spawn on the left."},
+        {"id": "CeilingVessel", "display": "Ceiling Vessel", "match": "CeilingVessel", "score": 2, "must_have": false, "looks": "A Vessel reaching its hand to a ceiling opening. Hack the far-right Pom-2, then break the Operator crystal on the balcony."},
+        {"id": "TreeRoom", "display": "Tree Room", "match": "Tree", "score": 2, "must_have": false, "looks": "Tree on a central platform. Breakable gates under the stairs, near the Necramech spawn."},
+        {"id": "SandOrbs", "display": "Four Sand Orbs", "match": "SandOrb", "score": 2, "must_have": false, "looks": "Three sand-filled orbs and one empty. Shoot the ceiling crystal to fill the empty orb and drop the platform."},
+        {"id": "DualYellowDoors", "display": "Circular Yellow Doors", "match": "YellowDoor", "score": 2, "must_have": false, "looks": "Circular room with two locked yellow doors. Ceiling vent where a dome support beam meets the ceiling."},
+        {"id": "GateStairs", "display": "Gate by the Stairs", "match": "GateStairs", "score": 2, "must_have": false, "looks": "Intersection with stairs and a large ornate grate. Shoot the unlit orb on the bridge, or use a nearby wall vent."}
+      ],
+      "known_layouts": []
+    },
+    {
+      "key": "orokin_derelict_survival",
+      "kind": "survival",
+      "tileset": "Orokin Derelict",
+      "title": "Terrorem — Orokin Derelict Survival",
+      "notes": "No single must-have farm room. Camp a compact combat tile; abort the tentacle room. Mark what spawned and reject rooms you leave.",
+      "rooms": [
+        {"id": "Hangar", "display": "Hangar", "match": "Hangar", "score": 2, "must_have": false, "looks": "Infested Orokin hangar bay. Large but readable — a common Terrorem camp if the sightlines stay short."},
+        {"id": "Plaza", "display": "Plaza", "match": "Plaza", "score": 2, "must_have": false, "looks": "Open derelict plaza with broken gold and infestation. Same tile as the Orokin Derelict Plaza Captura scene."},
+        {"id": "Garden", "display": "Garden", "match": "Garden", "score": 2, "must_have": false, "looks": "Overgrown courtyard with derelict trees and planters. Enemies funnel through the doorways."},
+        {"id": "IceHall", "display": "Ice / Cryo Hall", "match": "IntIce", "score": 2, "must_have": false, "looks": "Frozen Orokin halls with cryo floor mist. Jump the ice tiles; death orbs often sit in the next room."},
+        {"id": "DeathOrbHall", "display": "Death Orb Hall", "match": "DeathOrb", "score": 2, "must_have": false, "looks": "Hallway or chamber with spinning laser death orbs. Compact camp if you pin the orbs and hold a doorway."},
+        {"id": "Bridge", "display": "Bridge", "match": "Bridge", "score": 1, "must_have": false, "looks": "Narrow Orokin bridge over a pit or infested drop. Tight choke, longer sightlines."},
+        {"id": "ChallengeRoom", "display": "Challenge / Parkour", "match": "Challenge", "score": 0, "must_have": false, "looks": "Timed parkour treasure course with lasers and vents. Side loot, not a farm camp."},
+        {"id": "GoldenVault", "display": "Golden Vault", "match": "Vault", "score": 0, "must_have": false, "looks": "Small gold-rimmed vault door (dragon key). Replaces a side door — not a combat tile."},
+        {"id": "TentacleRoom", "display": "Tentacle Room", "match": "Tentacle", "score": -2, "must_have": false, "looks": "Giant open room with infested branches you traverse. Survival only uses it as a dead end — long spawns, usually abort."}
+      ],
+      "known_layouts": []
     }
   ]
 }

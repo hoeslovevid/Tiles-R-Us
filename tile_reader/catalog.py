@@ -17,12 +17,15 @@ TILESET_HINTS = (
     ("GrineerAsteroidFortress", "Kuva Fortress"),
     ("GrnFortress", "Kuva Fortress"),
     ("OrokinMoon", "Orokin Moon"),
+    ("OrokinDerelict", "Orokin Derelict"),
+    ("InfestedOrokin", "Orokin Derelict"),
     ("CorpusGasCity", "Corpus Gas City"),
     ("CorpusShip", "Corpus Ship"),
     ("InfestedCorpus", "Infested Ship"),
-    ("Infested", "Infested Ship"),
     ("EntratiLab", "Albrecht's Laboratories"),
     ("Albrecht", "Albrecht's Laboratories"),
+    ("InfestedMicroplanet", "Cambion Drift"),
+    ("Infested", "Infested Ship"),
     ("Zariman", "Zariman"),
     ("Duviri", "Duviri"),
     ("PlayerShip", "Orbiter"),
@@ -37,6 +40,9 @@ CATALOG_HINTS = (
     ("CorpusShip", "disruption", "corpus_ship_disruption"),
     ("GrineerAsteroidFortress", "disruption", "kuva_fortress_disruption"),
     ("EntratiLab", "disruption", "albrecht_disruption"),
+    ("EntratiLab", "survival", "albrecht_survival"),
+    ("OrokinDerelict", "survival", "orokin_derelict_survival"),
+    ("InfestedOrokin", "survival", "orokin_derelict_survival"),
     ("GrineerOcean", "survival", "grineer_sealab_survival"),
     ("InfestedCorpus", "survival", "infested_ship_survival"),
     ("GrineerGalleon", "survival", "grineer_galleon_survival"),
@@ -80,6 +86,8 @@ class Catalog:
         for room in self.rooms:
             token = (room.match or room.id).lower()
             if token and token in lower:
+                return room
+            if room.id.lower() == lower or room.id.lower() in lower:
                 return room
             if room.display.lower() == lower:
                 return room

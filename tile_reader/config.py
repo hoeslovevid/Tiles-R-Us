@@ -28,6 +28,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "grineer_sealab_survival": [],
         "infested_ship_survival": [],
         "grineer_galleon_survival": [],
+        "albrecht_disruption": [],
+        "albrecht_survival": [],
+        "orokin_derelict_survival": [],
     },
 }
 

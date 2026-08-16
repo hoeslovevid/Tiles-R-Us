@@ -138,7 +138,7 @@ if (-not $FromSource -and -not $SourceDir) {
 
 New-Item -ItemType Directory -Path $dest -Force | Out-Null
 
-$displayVersion = "1.5.0"
+$displayVersion = "1.6.0"
 $installedKind = "source"
 
 if ($FromSource -or $SourceDir) {

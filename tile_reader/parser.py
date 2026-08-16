@@ -147,7 +147,7 @@ def _infer_tile_role(role: str, path: str) -> str:
     if role and role not in {"Layer"}:
         return role
     lower = path.lower()
-    if "intermediate" in lower or "moonint" in lower:
+    if "intermediate" in lower or "moonint" in lower or "entratilabint" in lower or "derelictint" in lower:
         return "I"
     if "spawn" in lower:
         return "S"

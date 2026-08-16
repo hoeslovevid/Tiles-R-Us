@@ -41,11 +41,23 @@
     "tileset": "Kuva Fortress",
     "catalog_key": "kuva_fortress_disruption"
   },
-  "SolNode706": {
+  "SolNode721": {
     "name": "Armatus (Deimos)",
     "kind": "disruption",
     "tileset": "Albrecht's Laboratories",
     "catalog_key": "albrecht_disruption"
+  },
+  "SolNode717": {
+    "name": "Persto (Deimos)",
+    "kind": "survival",
+    "tileset": "Albrecht's Laboratories",
+    "catalog_key": "albrecht_survival"
+  },
+  "SolNode711": {
+    "name": "Terrorem (Deimos)",
+    "kind": "survival",
+    "tileset": "Orokin Derelict",
+    "catalog_key": "orokin_derelict_survival"
   },
   "SolNode69": {
     "name": "Ophelia (Uranus)",

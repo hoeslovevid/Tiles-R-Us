@@ -6,7 +6,7 @@ import sys
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from tile_reader.catalog import CatalogStore
+from tile_reader.catalog import CatalogStore, tileset_from_path
 from tile_reader.grader import grade_layout
 from tile_reader.models import Recommendation
 from tile_reader.parser import LineParser
@@ -149,6 +149,59 @@ def test_ambience_expands_numbered_room() -> None:
     assert any("IntermediateThree" in name or "Intermediate3" in name for name in tiles)
 
 
+def test_albrecht_nodes_and_rooms() -> None:
+    store = CatalogStore()
+    assert store.node_info("SolNode721")["name"] == "Armatus (Deimos)"
+    assert store.node_info("SolNode717")["name"] == "Persto (Deimos)"
+    assert store.node_info("SolNode706") == {}
+    disruption = store.catalogs["albrecht_disruption"]
+    survival = store.catalogs["albrecht_survival"]
+    assert disruption.room_by_id("BrainRoom") is not None
+    assert disruption.match_tile("EntratiLabIntPendulum") is not None
+    assert disruption.match_tile("LibraryAltar") is not None
+    assert survival.match_tile("BrainRoom") is not None
+    assert tileset_from_path("/Lotus/Levels/Proc/EntratiLab/EntratiLabDisruption") == "Albrecht's Laboratories"
+    assert tileset_from_path("/Lotus/Levels/InfestedCorpus/InfestedReactor") == "Infested Ship"
+
+
+def test_armatus_marked_rooms_stay() -> None:
+    log = """12.010 Script [Info]: ThemedSquadOverlay.lua: Lobby::Host_StartMatch: launching level for SolNode721 (/Lotus/Levels/Proc/EntratiLab/EntratiLabDisruption)
+12.020 Sys [Info]: Client loaded {"name":"SolNode721","quest":""} with MissionInfo:
+{"missionType":"MT_ARTIFACT","location":"SolNode721","levelOverride":"/Lotus/Levels/Proc/EntratiLab/EntratiLabDisruption"}
+12.200 Game [Info]: DeathRoom tile selected: /Lotus/Levels/Proc/EntratiLab/EntratiLabDisruption /Lotus/Levels/EntratiLab/EntratiLabIntBrain/
+12.210 Game [Info]: Removing streamed layer: /Lotus/Levels/EntratiLab/EntratiLabIntPendulum/Scope
+"""
+    session = replay_text(log).session
+    assert session.mission.node_id == "SolNode721"
+    assert session.mission.catalog_key == "albrecht_disruption"
+    names = session.layout.short_names()
+    assert any("Brain" in name for name in names)
+    assert any("Pendulum" in name for name in names)
+    assert session.grade.recommendation == Recommendation.STAY
+
+
+def test_terrorem_catalog() -> None:
+    store = CatalogStore()
+    assert store.node_info("SolNode711")["name"] == "Terrorem (Deimos)"
+    catalog = store.catalogs["orokin_derelict_survival"]
+    assert catalog.match_tile("OrokinDerelictIntHangar") is not None
+    assert catalog.match_tile("TentacleRoom").id == "TentacleRoom"
+    assert tileset_from_path("/Lotus/Levels/Proc/Orokin/OrokinDerelictSurvival") == "Orokin Derelict"
+
+
+def test_terrorem_hangar_stays() -> None:
+    log = """8.010 Script [Info]: ThemedSquadOverlay.lua: Lobby::Host_StartMatch: launching level for SolNode711 (/Lotus/Levels/Proc/Orokin/OrokinDerelictSurvival)
+8.020 Sys [Info]: Client loaded {"name":"SolNode711","quest":""} with MissionInfo:
+{"missionType":"MT_SURVIVAL","location":"SolNode711","levelOverride":"/Lotus/Levels/Proc/Orokin/OrokinDerelictSurvival"}
+8.200 Game [Info]: DeathRoom tile selected: /Lotus/Levels/Proc/Orokin/OrokinDerelictSurvival /Lotus/Levels/OrokinDerelict/OrokinDerelictIntHangar/
+"""
+    session = replay_text(log).session
+    assert session.mission.node_id == "SolNode711"
+    assert session.mission.catalog_key == "orokin_derelict_survival"
+    assert any("Hangar" in name for name in session.layout.short_names())
+    assert session.grade.recommendation == Recommendation.STAY
+
+
 if __name__ == "__main__":
     test_disruption_sample()
     test_survival_sample()
@@ -159,4 +212,8 @@ if __name__ == "__main__":
     test_level_colon_tiles()
     test_modern_log_deathroom_and_stream()
     test_ambience_expands_numbered_room()
+    test_albrecht_nodes_and_rooms()
+    test_armatus_marked_rooms_stay()
+    test_terrorem_catalog()
+    test_terrorem_hangar_stays()
     print("ok")
