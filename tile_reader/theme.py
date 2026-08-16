@@ -1,19 +1,18 @@
 from __future__ import annotations
 
 import ctypes
-import tkinter as tk
-from tkinter import ttk
-from typing import Callable, Optional
+from PySide6.QtGui import QColor, QFont, QPalette
+from PySide6.QtWidgets import QApplication, QWidget
 
 
-BG = "#0a0b10"
-SURFACE = "#12141c"
-SURFACE_2 = "#191c27"
-ELEVATED = "#222636"
-BORDER = "#2e3344"
-BORDER_SOFT = "#3a4156"
+BG = "#07080c"
+SURFACE = "#101218"
+SURFACE_2 = "#161922"
+ELEVATED = "#1c2030"
+BORDER = "#2a3144"
+BORDER_SOFT = "#3a4258"
 GOLD = "#d4b46a"
-GOLD_DIM = "#9a804c"
+GOLD_DIM = "#8f7544"
 GOLD_HOVER = "#e0c484"
 TEXT = "#f3f1eb"
 MUTED = "#8d93a6"
@@ -24,10 +23,6 @@ ORANGE = "#f0a05a"
 STAY_BG = "#123528"
 ABORT_BG = "#3a1518"
 WAIT_BG = "#3a2e12"
-
-# Back-compat aliases used around the app
-PANEL = SURFACE
-PANEL_ALT = SURFACE_2
 
 FONT = "Segoe UI"
 FONT_MONO = "Consolas"
@@ -56,122 +51,215 @@ REC_BG = {
 }
 
 
-def font(size: int, weight: str = "normal") -> tuple[str, int, str]:
-    return (FONT, size, weight)
+def font(size: int, weight: QFont.Weight = QFont.Weight.Normal) -> QFont:
+    item = QFont(FONT, size)
+    item.setWeight(weight)
+    return item
 
 
-def apply(root: tk.Tk) -> None:
-    root.configure(bg=BG)
+def display_font(size: int) -> QFont:
+    item = QFont(FONT, size, QFont.Weight.Bold)
+    item.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 1.2)
+    return item
+
+
+def stylesheet() -> str:
+    return f"""
+    QWidget {{
+        color: {TEXT};
+        font-family: "{FONT}";
+        font-size: 13px;
+    }}
+    QMainWindow, QDialog {{
+        background: {BG};
+    }}
+    QLabel#eyebrow {{
+        color: {GOLD_DIM};
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 1.6px;
+    }}
+    QLabel#muted {{
+        color: {MUTED};
+        font-size: 12px;
+    }}
+    QLabel#status {{
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 1.4px;
+    }}
+    QPushButton {{
+        background: {ELEVATED};
+        color: {TEXT};
+        border: 1px solid {BORDER};
+        border-radius: 4px;
+        padding: 8px 12px;
+        font-weight: 700;
+        font-size: 12px;
+    }}
+    QPushButton:hover {{
+        background: {BORDER};
+        border-color: {BORDER_SOFT};
+    }}
+    QPushButton:pressed {{
+        background: {SURFACE_2};
+    }}
+    QPushButton#primary {{
+        background: {GOLD};
+        color: {BG};
+        border: none;
+    }}
+    QPushButton#primary:hover {{
+        background: {GOLD_HOVER};
+    }}
+    QPushButton#ghost {{
+        background: transparent;
+        border: none;
+        color: {MUTED};
+        padding: 4px 8px;
+    }}
+    QPushButton#ghost:hover {{
+        color: {GOLD};
+        background: {ELEVATED};
+    }}
+    QPushButton#reject {{
+        background: transparent;
+        border: none;
+        color: {MUTED};
+        font-size: 11px;
+        font-weight: 700;
+        padding: 2px 6px;
+    }}
+    QPushButton#reject:hover, QPushButton#reject[on="true"] {{
+        color: {RED};
+    }}
+    QCheckBox {{
+        color: {MUTED};
+        spacing: 8px;
+        font-size: 12px;
+    }}
+    QCheckBox::indicator {{
+        width: 14px;
+        height: 14px;
+        border: 1px solid {BORDER_SOFT};
+        border-radius: 2px;
+        background: {SURFACE};
+    }}
+    QCheckBox::indicator:checked {{
+        background: {GOLD};
+        border-color: {GOLD};
+    }}
+    QSlider::groove:horizontal {{
+        height: 4px;
+        background: {ELEVATED};
+        border-radius: 2px;
+    }}
+    QSlider::handle:horizontal {{
+        width: 12px;
+        height: 12px;
+        margin: -5px 0;
+        background: {GOLD};
+        border-radius: 6px;
+    }}
+    QScrollArea {{
+        border: none;
+        background: transparent;
+    }}
+    QScrollBar:vertical {{
+        background: transparent;
+        width: 8px;
+        margin: 0;
+    }}
+    QScrollBar::handle:vertical {{
+        background: {BORDER};
+        border-radius: 4px;
+        min-height: 24px;
+    }}
+    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+        height: 0;
+    }}
+    QMenu {{
+        background: {SURFACE};
+        color: {TEXT};
+        border: 1px solid {BORDER};
+        padding: 6px;
+    }}
+    QMenu::item {{
+        padding: 6px 16px;
+        border-radius: 3px;
+    }}
+    QMenu::item:selected {{
+        background: {ELEVATED};
+        color: {GOLD};
+    }}
+    QMenu::separator {{
+        height: 1px;
+        background: {BORDER};
+        margin: 4px 8px;
+    }}
+    QTextEdit {{
+        background: {SURFACE};
+        color: {TEXT};
+        border: 1px solid {BORDER};
+        border-radius: 4px;
+        padding: 8px;
+        font-size: 13px;
+    }}
+    QFrame#hairline {{
+        background: {BORDER};
+        max-height: 1px;
+        min-height: 1px;
+    }}
+    QFrame#room {{
+        background: {SURFACE};
+        border: 1px solid {BORDER};
+        border-left: 3px solid {BORDER};
+        border-radius: 4px;
+    }}
+    QFrame#room[selected="true"] {{
+        background: {SURFACE_2};
+        border-left: 3px solid {GOLD};
+    }}
+    QFrame#room[rejected="true"] {{
+        border-left: 3px solid {RED};
+    }}
+    QFrame#hero {{
+        background: transparent;
+    }}
+    QFrame#rec {{
+        border-radius: 4px;
+        padding: 2px;
+    }}
+    """
+
+
+def apply(app: QApplication) -> None:
+    app.setStyle("Fusion")
+    app.setFont(font(10))
+    palette = QPalette()
+    palette.setColor(QPalette.ColorRole.Window, QColor(BG))
+    palette.setColor(QPalette.ColorRole.WindowText, QColor(TEXT))
+    palette.setColor(QPalette.ColorRole.Base, QColor(SURFACE))
+    palette.setColor(QPalette.ColorRole.AlternateBase, QColor(SURFACE_2))
+    palette.setColor(QPalette.ColorRole.Text, QColor(TEXT))
+    palette.setColor(QPalette.ColorRole.Button, QColor(ELEVATED))
+    palette.setColor(QPalette.ColorRole.ButtonText, QColor(TEXT))
+    palette.setColor(QPalette.ColorRole.Highlight, QColor(GOLD))
+    palette.setColor(QPalette.ColorRole.HighlightedText, QColor(BG))
+    palette.setColor(QPalette.ColorRole.ToolTipBase, QColor(SURFACE))
+    palette.setColor(QPalette.ColorRole.ToolTipText, QColor(TEXT))
+    app.setPalette(palette)
+    app.setStyleSheet(stylesheet())
+
+
+def round_corners(widget: QWidget, preference: int = 2) -> None:
     try:
-        root.option_add("*Font", font(10))
-    except tk.TclError:
-        pass
-    style = ttk.Style(root)
-    try:
-        style.theme_use("clam")
-    except tk.TclError:
-        return
-    style.configure(
-        "Overlay.Horizontal.TScale",
-        background=SURFACE,
-        troughcolor=ELEVATED,
-        bordercolor=SURFACE,
-        lightcolor=GOLD,
-        darkcolor=GOLD,
-        sliderthickness=18,
-        groovewidth=6,
-    )
-    style.map(
-        "Overlay.Horizontal.TScale",
-        background=[("active", SURFACE)],
-        lightcolor=[("active", GOLD_HOVER)],
-    )
-    style.configure("Dark.TNotebook", background=BG, borderwidth=0)
-    style.configure(
-        "Dark.TNotebook.Tab",
-        background=SURFACE_2,
-        foreground=MUTED,
-        padding=(16, 8),
-        font=font(9, "bold"),
-        borderwidth=0,
-        lightcolor=SURFACE_2,
-        darkcolor=SURFACE_2,
-    )
-    style.map(
-        "Dark.TNotebook.Tab",
-        background=[("selected", SURFACE), ("active", ELEVATED)],
-        foreground=[("selected", GOLD), ("active", TEXT)],
-    )
-
-
-def round_corners(window: tk.Misc, preference: int = 2) -> None:
-    try:
-        window.update_idletasks()
-        hwnd = int(window.winfo_id())
-        parent = ctypes.windll.user32.GetParent(hwnd)
-        if parent:
-            hwnd = parent
+        hwnd = int(widget.winId())
         value = ctypes.c_int(preference)
         ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 33, ctypes.byref(value), ctypes.sizeof(value))
     except Exception:
         pass
 
 
-def card(parent: tk.Widget, title: str = "", **pack) -> tk.Frame:
-    wrap = tk.Frame(parent, bg=SURFACE, highlightthickness=1, highlightbackground=BORDER)
-    if pack:
-        wrap.pack(**pack)
-    inner = tk.Frame(wrap, bg=SURFACE)
-    inner.pack(fill="both", expand=True, padx=16, pady=14)
-    if title:
-        tk.Label(inner, text=title.upper(), bg=SURFACE, fg=GOLD_DIM, font=font(8, "bold")).pack(anchor="w", pady=(0, 8))
-    return inner
-
-
-def button(parent: tk.Widget, text: str, command: Callable[[], None], kind: str = "secondary") -> tk.Button:
-    if kind == "primary":
-        bg, fg, hover, active_fg = GOLD, BG, GOLD_HOVER, BG
-    elif kind == "danger":
-        bg, fg, hover, active_fg = ABORT_BG, RED, "#4a1c20", TEXT
-    else:
-        bg, fg, hover, active_fg = ELEVATED, TEXT, BORDER_SOFT, TEXT
-    btn = tk.Button(
-        parent,
-        text=text,
-        command=command,
-        bg=bg,
-        fg=fg,
-        activebackground=hover,
-        activeforeground=active_fg,
-        bd=0,
-        relief="flat",
-        padx=12,
-        pady=7,
-        font=font(9, "bold"),
-        cursor="hand2",
-        highlightthickness=0,
-    )
-    btn.bind("<Enter>", lambda _e, widget=btn, color=hover: widget.configure(bg=color))
-    btn.bind("<Leave>", lambda _e, widget=btn, color=bg: widget.configure(bg=color))
-    return btn
-
-
-def check(parent: tk.Widget, text: str, var: tk.BooleanVar, command: Optional[Callable[[], None]] = None) -> tk.Checkbutton:
-    widget = tk.Checkbutton(
-        parent,
-        text=text,
-        variable=var,
-        command=command,
-        bg=parent.cget("bg"),
-        fg=TEXT,
-        selectcolor=ELEVATED,
-        activebackground=parent.cget("bg"),
-        activeforeground=TEXT,
-        font=font(10),
-        anchor="w",
-        cursor="hand2",
-        highlightthickness=0,
-        bd=0,
-    )
-    widget.pack(fill="x", pady=2)
-    return widget
+def qcolor(value: str) -> QColor:
+    return QColor(value)

@@ -97,99 +97,115 @@ def open_issue(title: str, body: str) -> str:
 
 
 def copy_to_clipboard(widget, text: str) -> None:
-    widget.clipboard_clear()
-    widget.clipboard_append(text)
-    widget.update_idletasks()
+    try:
+        from PySide6.QtWidgets import QApplication
+
+        clipboard = QApplication.clipboard()
+        if clipboard is not None:
+            clipboard.setText(text)
+            return
+    except Exception:
+        pass
+    if widget is not None and hasattr(widget, "clipboard_clear"):
+        widget.clipboard_clear()
+        widget.clipboard_append(text)
+        widget.update_idletasks()
 
 
 def show_about(parent) -> None:
-    from tkinter import messagebox
+    from PySide6.QtWidgets import QMessageBox
 
-    messagebox.showinfo(
+    QMessageBox.information(
+        parent,
         f"About {APP_NAME}",
         f"{APP_NAME} {VERSION}\n\n"
         "Reads Warframe EE.log and grades Disruption / Survival layouts.\n\n"
         f"GitHub:\n{GITHUB_URL}",
-        parent=parent,
     )
 
 
 def show_bug_dialog(parent, session: Optional[Session] = None) -> None:
-    import tkinter as tk
-    from tkinter import messagebox
+    from PySide6.QtWidgets import (
+        QCheckBox,
+        QDialog,
+        QHBoxLayout,
+        QLabel,
+        QMessageBox,
+        QPushButton,
+        QTextEdit,
+        QVBoxLayout,
+    )
 
     from . import theme
 
     diagnostics = collect_diagnostics(session)
-    dialog = tk.Toplevel(parent)
-    dialog.title("Report a bug")
-    dialog.configure(bg=theme.BG)
-    dialog.geometry("580x600")
-    dialog.transient(parent)
-    dialog.attributes("-topmost", True)
-    dialog.grab_set()
-    theme.round_corners(dialog)
+    dialog = QDialog(parent)
+    dialog.setWindowTitle("Report a bug")
+    dialog.resize(560, 560)
+    layout = QVBoxLayout(dialog)
+    layout.setContentsMargins(20, 18, 20, 18)
+    layout.setSpacing(8)
 
-    header = tk.Frame(dialog, bg=theme.SURFACE, highlightthickness=1, highlightbackground=theme.BORDER)
-    header.pack(fill="x", padx=16, pady=(16, 8))
-    head_inner = tk.Frame(header, bg=theme.SURFACE)
-    head_inner.pack(fill="x", padx=16, pady=12)
-    tk.Label(head_inner, text="Report a bug", bg=theme.SURFACE, fg=theme.GOLD, font=theme.font(14, "bold")).pack(anchor="w")
-    tk.Label(
-        head_inner,
-        text="Opens a GitHub issue. Diagnostics never include EE.log (that file can contain your email and IP).",
-        bg=theme.SURFACE,
-        fg=theme.MUTED,
-        wraplength=520,
-        justify="left",
-        font=theme.font(9),
-    ).pack(anchor="w", pady=(4, 0))
-
-    body = tk.Frame(dialog, bg=theme.BG)
-    body.pack(fill="both", expand=True, padx=16)
-
-    tk.Label(body, text="WHAT HAPPENED", bg=theme.BG, fg=theme.GOLD_DIM, font=theme.font(8, "bold")).pack(anchor="w", pady=(8, 4))
-    what = tk.Text(body, height=4, bg=theme.SURFACE, fg=theme.TEXT, insertbackground=theme.TEXT, bd=0, font=theme.font(10), wrap="word", highlightthickness=1, highlightbackground=theme.BORDER)
-    what.pack(fill="x")
-
-    tk.Label(body, text="STEPS TO REPRODUCE", bg=theme.BG, fg=theme.GOLD_DIM, font=theme.font(8, "bold")).pack(anchor="w", pady=(12, 4))
-    steps = tk.Text(body, height=4, bg=theme.SURFACE, fg=theme.TEXT, insertbackground=theme.TEXT, bd=0, font=theme.font(10), wrap="word", highlightthickness=1, highlightbackground=theme.BORDER)
-    steps.pack(fill="x")
-
-    include = tk.BooleanVar(value=True)
-    theme.check(
-        body,
-        "Include app diagnostics (mission, rooms, grade, OS — no account data)",
-        include,
+    title = QLabel("Report a bug")
+    title.setStyleSheet(f"color: {theme.GOLD}; font-size: 16px; font-weight: 700;")
+    layout.addWidget(title)
+    hint = QLabel(
+        "Opens a GitHub issue. Diagnostics never include EE.log (that file can contain your email and IP)."
     )
+    hint.setWordWrap(True)
+    hint.setStyleSheet(f"color: {theme.MUTED}; font-size: 12px;")
+    layout.addWidget(hint)
+
+    layout.addWidget(QLabel("WHAT HAPPENED"))
+    what = QTextEdit()
+    what.setFixedHeight(90)
+    layout.addWidget(what)
+
+    layout.addWidget(QLabel("STEPS TO REPRODUCE"))
+    steps = QTextEdit()
+    steps.setFixedHeight(90)
+    layout.addWidget(steps)
+
+    include = QCheckBox("Include app diagnostics (mission, rooms, grade, OS — no account data)")
+    include.setChecked(True)
+    layout.addWidget(include)
 
     def _body() -> str:
-        diag = diagnostics if include.get() else "(diagnostics not included)"
-        return build_issue_body(what.get("1.0", "end"), steps.get("1.0", "end"), diag)
+        diag = diagnostics if include.isChecked() else "(diagnostics not included)"
+        return build_issue_body(what.toPlainText(), steps.toPlainText(), diag)
 
     def _title() -> str:
-        first = what.get("1.0", "end").strip().splitlines()
+        first = what.toPlainText().strip().splitlines()
         return first[0][:80] if first and first[0] else f"{APP_NAME} bug"
 
     def submit() -> None:
         body = _body()
         copy_to_clipboard(dialog, body)
         open_issue(_title(), body)
-        messagebox.showinfo(
+        QMessageBox.information(
+            dialog,
             "Bug report",
             "GitHub should open with a pre-filled issue.\n\nThe full report was also copied to your clipboard.",
-            parent=dialog,
         )
-        dialog.destroy()
+        dialog.accept()
 
     def copy_only() -> None:
         copy_to_clipboard(dialog, _body())
-        messagebox.showinfo("Copied", "Bug report copied to the clipboard.", parent=dialog)
+        QMessageBox.information(dialog, "Copied", "Bug report copied to the clipboard.")
 
-    buttons = tk.Frame(dialog, bg=theme.BG)
-    buttons.pack(fill="x", padx=16, pady=16)
-    theme.button(buttons, "Open GitHub issue", submit, kind="primary").pack(side="left", padx=(0, 8))
-    theme.button(buttons, "Copy report", copy_only).pack(side="left")
-    theme.button(buttons, "Cancel", dialog.destroy).pack(side="right")
-    what.focus_set()
+    buttons = QHBoxLayout()
+    open_btn = QPushButton("Open GitHub issue")
+    open_btn.setObjectName("primary")
+    open_btn.clicked.connect(submit)
+    buttons.addWidget(open_btn)
+    copy_btn = QPushButton("Copy report")
+    copy_btn.clicked.connect(copy_only)
+    buttons.addWidget(copy_btn)
+    buttons.addStretch()
+    cancel = QPushButton("Cancel")
+    cancel.clicked.connect(dialog.reject)
+    buttons.addWidget(cancel)
+    layout.addLayout(buttons)
+    what.setFocus()
+    dialog.exec()
 

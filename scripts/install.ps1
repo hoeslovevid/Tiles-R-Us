@@ -138,7 +138,7 @@ if (-not $FromSource -and -not $SourceDir) {
 
 New-Item -ItemType Directory -Path $dest -Force | Out-Null
 
-$displayVersion = "1.6.0"
+$displayVersion = "1.7.0"
 $installedKind = "source"
 
 if ($FromSource -or $SourceDir) {
@@ -192,6 +192,11 @@ if ($uninstallSrc) {
 
 $exe = Join-Path $dest $ExeName
 $python = Get-Python
+$req = Join-Path $dest "requirements.txt"
+if ($python -and -not (Test-Path $exe) -and (Test-Path $req)) {
+    Write-Step "Installing Python packages (PySide6)"
+    & $python -m pip install -r $req
+}
 $launcher = Join-Path $dest "tilesrus.cmd"
 if (-not (Test-Path $launcher)) {
     $fromLauncher = Join-Path $PSScriptRoot "..\tilesrus.cmd"
@@ -221,7 +226,7 @@ if (Test-Path $exe) {
         New-Shortcut -Path $desktopShortcut -Target $launcher -WorkingDir $dest
     }
 } else {
-    throw "Python was not found and this install has no $ExeName. Install Python 3.11+ (with tcl/tk) or use a GitHub Release."
+    throw "Python was not found and this install has no $ExeName. Install Python 3.11+ or use a GitHub Release."
 }
 
 Write-Step "Adding $dest to your user PATH"

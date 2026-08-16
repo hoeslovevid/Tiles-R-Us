@@ -1,2 +1,1 @@
-# Stdlib only: tkinter ships with the official Windows Python installer.
-# No pip packages are required to run the app.
+PySide6>=6.6

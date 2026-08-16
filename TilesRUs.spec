@@ -2,14 +2,18 @@
 
 from pathlib import Path
 
+from PyInstaller.utils.hooks import collect_all
+
 ROOT = Path(SPECPATH)
+
+pyside_datas, pyside_binaries, pyside_hidden = collect_all("PySide6")
 
 a = Analysis(
     [str(ROOT / "main.py")],
     pathex=[str(ROOT)],
-    binaries=[],
-    datas=[(str(ROOT / "data"), "data")],
-    hiddenimports=[],
+    binaries=pyside_binaries,
+    datas=[(str(ROOT / "data"), "data"), *pyside_datas],
+    hiddenimports=pyside_hidden,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

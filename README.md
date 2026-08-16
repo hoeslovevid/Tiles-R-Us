@@ -48,15 +48,14 @@ python -m tile_reader
 
 ## Run from source (no install)
 
-1. Install [Python 3.11+](https://www.python.org/downloads/) with **tcl/tk**.
-2. Start Warframe first (the log file is recreated on launch).
-3. Double-click `run.bat`, or run `tilesrus` / `python -m tile_reader`.
-
-No pip packages are required to run from source.
+1. Install [Python 3.11+](https://www.python.org/downloads/).
+2. `pip install -r requirements.txt` (needs **PySide6**).
+3. Start Warframe first (the log file is recreated on launch).
+4. Double-click `run.bat`, or run `tilesrus` / `python -m tile_reader`.
 
 ## Report a bug
 
-In the app: **Help → Report a bug…** or the **Report a bug** button. That opens a GitHub issue with diagnostics (mission, rooms, grade, OS). It copies the full report to the clipboard and **does not** attach `EE.log` — that file can contain your email and IP.
+In the app: **··· → Report a bug…**. That opens a GitHub issue with diagnostics (mission, rooms, grade, OS). It copies the full report to the clipboard and **does not** attach `EE.log` — that file can contain your email and IP.
 
 ## How it works
 
@@ -64,9 +63,9 @@ The app tails `%LocalAppData%\Warframe\EE.log`. It still reads mission type, nod
 
 Tile *names* were hidden by Digital Extremes in Update 37. If the log no longer dumps rooms, use one of these:
 
-- **Mark rooms you see** in the right-hand picker (Kappa, Ur, Apollo, Olympus, Armatus, Ophelia, Zabala, Assur, Persto, Terrorem).
+- **Mark rooms you see** — tap a room tile in the companion (Kappa, Ur, Apollo, Olympus, Armatus, Ophelia, Zabala, Assur, Persto, Terrorem).
 - Take an in-game **F6** screenshot. If the JPEG still embeds the current tile path, the app picks it up from `Pictures\Warframe`.
-- Click **Demo: Disruption** / **Demo: Survival** to see a graded layout without loading a mission.
+- **··· → Demo: Disruption / Survival** to see a graded layout without loading a mission.
 
 Toggle **Reject** on rooms you personally abort. Those choices are saved in `config.json`.
 
@@ -81,7 +80,7 @@ Catalogs live in `data/catalogs/`. Edit scores, add rooms, or add `known_layouts
 
 ## Overlay
 
-Drag the small overlay anywhere. **Lock overlay** makes it click-through so it will not steal game clicks.
+Drag the small overlay anywhere. **Lock** in the companion footer makes it click-through so it will not steal game clicks.
 
 ## Safety
 

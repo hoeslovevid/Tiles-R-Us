@@ -19,5 +19,6 @@ if %ERRORLEVEL%==0 (
   exit /b %ERRORLEVEL%
 )
 
-echo Python 3.11+ (with tcl/tk) was not found, and TilesRUs.exe is not in this folder.
+echo Python 3.11+ was not found, and TilesRUs.exe is not in this folder.
+echo Install Python, then: pip install -r requirements.txt
 exit /b 1

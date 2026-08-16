@@ -3,14 +3,32 @@ from __future__ import annotations
 import queue
 import tempfile
 import threading
-import tkinter as tk
 from pathlib import Path
-from tkinter import filedialog, messagebox, ttk
 from typing import Any, Optional
+
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QAction
+from PySide6.QtWidgets import (
+    QApplication,
+    QCheckBox,
+    QDialog,
+    QFileDialog,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QMainWindow,
+    QMenu,
+    QMessageBox,
+    QPushButton,
+    QScrollArea,
+    QSlider,
+    QVBoxLayout,
+    QWidget,
+)
 
 from . import theme
 from .bug_report import open_github, show_about, show_bug_dialog
-from .catalog import CatalogStore
+from .catalog import CatalogStore, RoomInfo
 from .config import load_config, save_config
 from .log_watcher import LogWatcher
 from .meta import APP_NAME, VERSION
@@ -29,9 +47,67 @@ from .updater import (
 )
 
 
-class TileReaderApp:
-    def __init__(self, root: tk.Tk) -> None:
-        self.root = root
+class RoomCard(QFrame):
+    def __init__(
+        self,
+        room: RoomInfo,
+        selected: bool,
+        rejected: bool,
+        on_toggle,
+        on_reject,
+        parent: Optional[QWidget] = None,
+    ) -> None:
+        super().__init__(parent)
+        self.room = room
+        self.selected = selected
+        self.rejected = rejected
+        self._on_toggle = on_toggle
+        self.setObjectName("room")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._apply_state()
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(4)
+
+        header = QHBoxLayout()
+        name = QLabel(room.display)
+        name.setStyleSheet(f"font-weight: 700; color: {theme.RED if rejected else theme.TEXT};")
+        header.addWidget(name, 1)
+        score_fg = theme.GREEN if room.score > 0 else theme.RED if room.score < 0 else theme.MUTED
+        score = QLabel(f"{room.score:+d}")
+        score.setStyleSheet(f"color: {score_fg}; font-weight: 700; font-size: 12px;")
+        header.addWidget(score)
+        reject_btn = QPushButton("REJECT")
+        reject_btn.setObjectName("reject")
+        reject_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        reject_btn.setProperty("on", "true" if rejected else "false")
+        reject_btn.clicked.connect(on_reject)
+        header.addWidget(reject_btn)
+        layout.addLayout(header)
+
+        looks = QLabel(room.looks or room.notes or "No landmark notes yet.")
+        looks.setObjectName("muted")
+        looks.setWordWrap(True)
+        looks.setStyleSheet(f"color: {theme.MUTED}; font-size: 11px;")
+        layout.addWidget(looks)
+
+    def _apply_state(self) -> None:
+        self.setProperty("selected", "true" if self.selected else "false")
+        self.setProperty("rejected", "true" if self.rejected else "false")
+        self.style().unpolish(self)
+        self.style().polish(self)
+
+    def mousePressEvent(self, event) -> None:  # type: ignore[override]
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._on_toggle()
+        super().mousePressEvent(event)
+
+
+class Companion(QMainWindow):
+    def __init__(self) -> None:
+        super().__init__()
         self.cfg = load_config()
         self.store = CatalogStore()
         self.controller = SessionController(self.store, self.cfg)
@@ -39,25 +115,23 @@ class TileReaderApp:
         self.events: queue.Queue[Any] = queue.Queue()
         self.watcher: Optional[LogWatcher] = None
         self.shots: Optional[ScreenshotWatcher] = None
-        self.room_vars: dict[str, tk.BooleanVar] = {}
         self._picker_key = None
         self._picker_force = True
         self._ignore_picker = False
         self._reason_key = None
-        self._tile_key = None
-        self._opacity_save_job: Optional[str] = None
-        self.overlay: Optional[OverlayWindow] = None
+        self._selected_rooms: set[str] = set()
+        self._opacity_save_job: Optional[QTimer] = None
         self._latest_release: Optional[ReleaseInfo] = None
         self._update_busy = False
-        self._progress_win: Optional[tk.Toplevel] = None
-        self._progress_label: Optional[tk.Label] = None
+        self._progress: Optional[QDialog] = None
+        self._progress_label: Optional[QLabel] = None
         self._overlay_pulse = 0
-        self._guide_key = None
+        self.overlay: Optional[OverlayWindow] = None
+        self._room_cards: dict[str, RoomCard] = {}
 
         self._build()
         opacity = float(self.cfg["overlay"].get("opacity", 0.92))
         self.overlay = OverlayWindow(
-            root,
             on_move=self._save_overlay_pos,
             font_size=int(self.cfg["overlay"].get("font_size", 16)),
             x=int(self.cfg["overlay"].get("x", 48)),
@@ -65,227 +139,187 @@ class TileReaderApp:
             opacity=opacity,
         )
         if not self.cfg["overlay"].get("visible", True):
+            self.overlay_check.setChecked(False)
             self.overlay.set_visible(False)
         if self.cfg["overlay"].get("locked"):
-            self.overlay_lock_var.set(True)
+            self.lock_check.setChecked(True)
             self.overlay.set_locked(True)
 
         self._start_watchers()
-        self.root.after(16, self._drain)
+        self._drain_timer = QTimer(self)
+        self._drain_timer.timeout.connect(self._drain)
+        self._drain_timer.start(16)
+        QTimer.singleShot(1800, lambda: self._check_for_updates(quiet=True))
         self._refresh()
 
     def _build(self) -> None:
-        theme.apply(self.root)
-        self.root.title(f"{APP_NAME} {VERSION}")
-        self.root.geometry("1120x780")
-        self.root.minsize(960, 680)
-        theme.round_corners(self.root)
+        self.setWindowTitle(f"{APP_NAME} {VERSION}")
+        self.setMinimumSize(420, 720)
+        self.resize(460, 860)
         if self.cfg.get("always_on_top"):
-            self.root.attributes("-topmost", True)
+            self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
 
-        menubar = tk.Menu(self.root)
-        help_menu = tk.Menu(menubar, tearoff=0)
-        help_menu.add_command(label="Check for updates…", command=self._check_for_updates)
-        help_menu.add_command(label="Report a bug…", command=self._report_bug)
-        help_menu.add_command(label="Open GitHub", command=open_github)
-        help_menu.add_separator()
-        help_menu.add_command(label="About", command=lambda: show_about(self.root))
-        menubar.add_cascade(label="Help", menu=help_menu)
-        self.root.config(menu=menubar)
+        root = QWidget()
+        self.setCentralWidget(root)
+        layout = QVBoxLayout(root)
+        layout.setContentsMargins(20, 16, 20, 16)
+        layout.setSpacing(0)
 
-        chrome = tk.Frame(self.root, bg=theme.SURFACE, highlightthickness=1, highlightbackground=theme.BORDER)
-        chrome.pack(fill="x", padx=16, pady=(16, 0))
-        header = tk.Frame(chrome, bg=theme.SURFACE)
-        header.pack(fill="x", padx=16, pady=12)
-
-        brand = tk.Frame(header, bg=theme.SURFACE)
-        brand.pack(side="left")
-        tk.Label(brand, text=APP_NAME.upper(), bg=theme.SURFACE, fg=theme.GOLD, font=theme.font(18, "bold")).pack(
-            side="left"
+        header = QHBoxLayout()
+        brand = QLabel(APP_NAME.upper())
+        brand.setStyleSheet(
+            f"color: {theme.GOLD}; font-size: 15px; font-weight: 700; letter-spacing: 2px;"
         )
-        self.version_chip = tk.Label(
-            brand,
-            text=f"v{VERSION}",
-            bg=theme.ELEVATED,
-            fg=theme.MUTED,
-            font=theme.font(8, "bold"),
-            padx=8,
-            pady=2,
-            cursor="hand2",
+        header.addWidget(brand)
+        self.version_chip = QPushButton(f"v{VERSION}")
+        self.version_chip.setObjectName("ghost")
+        self.version_chip.clicked.connect(lambda: self._check_for_updates(False))
+        header.addWidget(self.version_chip)
+        header.addStretch()
+        more = QPushButton("···")
+        more.setObjectName("ghost")
+        more.setFixedWidth(36)
+        more.clicked.connect(self._show_menu)
+        header.addWidget(more)
+        layout.addLayout(header)
+
+        self.status_label = QLabel("STARTING")
+        self.status_label.setObjectName("status")
+        self.status_label.setStyleSheet(f"color: {theme.MUTED}; padding: 10px 0 12px 0;")
+        layout.addWidget(self.status_label)
+
+        line = QFrame()
+        line.setObjectName("hairline")
+        layout.addWidget(line)
+
+        hero = QVBoxLayout()
+        hero.setContentsMargins(0, 18, 0, 8)
+        hero.setSpacing(4)
+        self.grade_letter = QLabel("?")
+        self.grade_letter.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.grade_letter.setFont(theme.display_font(72))
+        self.grade_letter.setStyleSheet(f"color: {theme.GOLD};")
+        hero.addWidget(self.grade_letter)
+
+        self.rec_label = QLabel("WAIT")
+        self.rec_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.rec_label.setStyleSheet(
+            f"color: {theme.YELLOW}; background: {theme.WAIT_BG}; font-size: 13px; "
+            f"font-weight: 700; letter-spacing: 3px; padding: 8px;"
         )
-        self.version_chip.pack(side="left", padx=(10, 0))
-        self.version_chip.bind("<Button-1>", lambda _e: self._check_for_updates())
+        hero.addWidget(self.rec_label)
+        layout.addLayout(hero)
 
-        self.status_pill = tk.Label(
-            header,
-            text="Starting…",
-            bg=theme.ELEVATED,
-            fg=theme.MUTED,
-            font=theme.font(9, "bold"),
-            padx=12,
-            pady=5,
-        )
-        self.status_pill.pack(side="right")
-        self.status_var = tk.StringVar(value="Starting…")
+        self.mission_name = QLabel("Waiting for a mission")
+        self.mission_name.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.mission_name.setStyleSheet("font-size: 16px; font-weight: 700;")
+        self.mission_name.setWordWrap(True)
+        layout.addWidget(self.mission_name)
+        self.mission_meta = QLabel("Queue Disruption or Survival while this app is running.")
+        self.mission_meta.setObjectName("muted")
+        self.mission_meta.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.mission_meta.setWordWrap(True)
+        self.mission_meta.setStyleSheet(f"color: {theme.MUTED}; font-size: 12px; padding-bottom: 8px;")
+        layout.addWidget(self.mission_meta)
 
-        body = tk.Frame(self.root, bg=theme.BG)
-        body.pack(fill="both", expand=True, padx=16, pady=16)
-        left = tk.Frame(body, bg=theme.BG)
-        left.pack(side="left", fill="both", expand=True, padx=(0, 12))
-        right = tk.Frame(body, bg=theme.BG, width=360)
-        right.pack(side="right", fill="y")
-        right.pack_propagate(False)
+        self.tracker_text = QLabel("No run in progress.")
+        self.tracker_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.tracker_text.setStyleSheet(f"color: {theme.TEXT}; font-size: 12px;")
+        self.tracker_text.setWordWrap(True)
+        layout.addWidget(self.tracker_text)
 
-        mission = theme.card(left, "Mission", fill="x", pady=(0, 12))
-        self.mission_name = tk.Label(mission, text="Waiting for a mission", bg=theme.SURFACE, fg=theme.TEXT, font=theme.font(16, "bold"), anchor="w")
-        self.mission_name.pack(fill="x")
-        self.mission_meta = tk.Label(
-            mission,
-            text="Queue Disruption or Survival while this app is running.",
-            bg=theme.SURFACE,
-            fg=theme.MUTED,
-            font=theme.font(10),
-            anchor="w",
-        )
-        self.mission_meta.pack(fill="x", pady=(2, 0))
+        self.score_label = QLabel("Score 0")
+        self.score_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.score_label.setStyleSheet(f"color: {theme.MUTED}; font-size: 11px; padding-bottom: 10px;")
+        layout.addWidget(self.score_label)
 
-        grade_card = theme.card(left, "Grade", fill="x", pady=(0, 12))
-        grade_row = tk.Frame(grade_card, bg=theme.SURFACE)
-        grade_row.pack(fill="x")
-        self.grade_well = tk.Frame(grade_row, bg=theme.ELEVATED)
-        self.grade_well.pack(side="left", padx=(0, 16))
-        self.grade_letter = tk.Label(
-            self.grade_well,
-            text="?",
-            bg=theme.ELEVATED,
-            fg=theme.GOLD,
-            font=theme.font(44, "bold"),
-            width=2,
-            padx=10,
-            pady=6,
-        )
-        self.grade_letter.pack()
-        grade_text = tk.Frame(grade_row, bg=theme.SURFACE)
-        grade_text.pack(side="left", fill="both", expand=True)
-        rec_row = tk.Frame(grade_text, bg=theme.SURFACE)
-        rec_row.pack(fill="x")
-        self.rec_label = tk.Label(
-            rec_row,
-            text="WAIT",
-            bg=theme.WAIT_BG,
-            fg=theme.YELLOW,
-            font=theme.font(11, "bold"),
-            padx=10,
-            pady=3,
-        )
-        self.rec_label.pack(side="left")
-        self.score_label = tk.Label(rec_row, text="Score 0", bg=theme.SURFACE, fg=theme.MUTED, font=theme.font(10), padx=10)
-        self.score_label.pack(side="left")
-        self.reasons_frame = tk.Frame(grade_card, bg=theme.SURFACE)
-        self.reasons_frame.pack(fill="x", pady=(12, 0))
+        self.reasons_label = QLabel("No grade yet.")
+        self.reasons_label.setWordWrap(True)
+        self.reasons_label.setStyleSheet(f"color: {theme.MUTED}; font-size: 12px; padding: 0 4px 14px 4px;")
+        layout.addWidget(self.reasons_label)
 
-        layout_card = theme.card(left, "Layout", fill="both", expand=True)
-        self.layout_label = tk.Label(layout_card, text="No rooms identified.", bg=theme.SURFACE, fg=theme.MUTED, font=theme.font(10), anchor="w")
-        self.layout_label.pack(fill="x")
-        self.tile_frame = tk.Frame(layout_card, bg=theme.SURFACE)
-        self.tile_frame.pack(fill="both", expand=True, pady=(8, 0))
+        rooms_head = QHBoxLayout()
+        eyebrow = QLabel("ROOMS")
+        eyebrow.setObjectName("eyebrow")
+        rooms_head.addWidget(eyebrow)
+        rooms_head.addStretch()
+        self.rooms_hint = QLabel("Tap a tile to mark it")
+        self.rooms_hint.setStyleSheet(f"color: {theme.MUTED}; font-size: 11px;")
+        rooms_head.addWidget(self.rooms_hint)
+        layout.addLayout(rooms_head)
 
-        tracker = theme.card(right, "Live tracker", fill="x", pady=(0, 12))
-        self.tracker_text = tk.Label(
-            tracker,
-            text="No run in progress.",
-            bg=theme.SURFACE,
-            fg=theme.TEXT,
-            font=theme.font(10),
-            anchor="w",
-            justify="left",
-            wraplength=300,
-        )
-        self.tracker_text.pack(fill="x")
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.rooms_host = QWidget()
+        self.rooms_layout = QVBoxLayout(self.rooms_host)
+        self.rooms_layout.setContentsMargins(0, 8, 0, 8)
+        self.rooms_layout.setSpacing(8)
+        self.rooms_empty = QLabel("Queue a Disruption or Survival node to see its rooms.")
+        self.rooms_empty.setWordWrap(True)
+        self.rooms_empty.setStyleSheet(f"color: {theme.MUTED}; font-size: 12px;")
+        self.rooms_layout.addWidget(self.rooms_empty)
+        self.rooms_layout.addStretch()
+        scroll.setWidget(self.rooms_host)
+        layout.addWidget(scroll, 1)
 
-        picker = theme.card(right, "", fill="both", expand=True, pady=(0, 12))
-        notebook = ttk.Notebook(picker, style="Dark.TNotebook")
-        notebook.pack(fill="both", expand=True)
-        mark_tab = tk.Frame(notebook, bg=theme.SURFACE)
-        guide_tab = tk.Frame(notebook, bg=theme.SURFACE)
-        notebook.add(mark_tab, text="  Mark rooms  ")
-        notebook.add(guide_tab, text="  Tile guide  ")
-        tk.Label(
-            mark_tab,
-            text="Auto-scan reads EE.log. Toggle only if a room was missed.",
-            bg=theme.SURFACE,
-            fg=theme.MUTED,
-            font=theme.font(9),
-            anchor="w",
-            wraplength=300,
-            justify="left",
-        ).pack(fill="x", padx=4, pady=(8, 0))
-        self.picker_frame = tk.Frame(mark_tab, bg=theme.SURFACE)
-        self.picker_frame.pack(fill="both", expand=True, pady=(8, 0), padx=4)
-        tk.Label(
-            guide_tab,
-            text="What each room looks like for this node.",
-            bg=theme.SURFACE,
-            fg=theme.MUTED,
-            font=theme.font(9),
-            anchor="w",
-            wraplength=300,
-            justify="left",
-        ).pack(fill="x", padx=4, pady=(8, 0))
-        self.guide_frame = tk.Frame(guide_tab, bg=theme.SURFACE)
-        self.guide_frame.pack(fill="both", expand=True, pady=(8, 0), padx=4)
+        foot_line = QFrame()
+        foot_line.setObjectName("hairline")
+        layout.addWidget(foot_line)
 
-        settings = theme.card(right, "Overlay & controls", fill="x")
-        self.overlay_var = tk.BooleanVar(value=bool(self.cfg["overlay"].get("visible", True)))
-        self.overlay_lock_var = tk.BooleanVar(value=bool(self.cfg["overlay"].get("locked", False)))
-        self.top_var = tk.BooleanVar(value=bool(self.cfg.get("always_on_top", True)))
-        theme.check(settings, "Show overlay", self.overlay_var, self._toggle_overlay)
-        theme.check(settings, "Lock overlay (click-through)", self.overlay_lock_var, self._toggle_lock)
-        theme.check(settings, "Main window always on top", self.top_var, self._toggle_top)
-
-        opacity_row = tk.Frame(settings, bg=theme.SURFACE)
-        opacity_row.pack(fill="x", pady=(10, 0))
-        tk.Label(opacity_row, text="Overlay opacity", bg=theme.SURFACE, fg=theme.MUTED, font=theme.font(9, "bold")).pack(
-            side="left"
-        )
+        footer = QVBoxLayout()
+        footer.setContentsMargins(0, 12, 0, 0)
+        footer.setSpacing(8)
+        checks = QHBoxLayout()
+        self.overlay_check = QCheckBox("Overlay")
+        self.overlay_check.setChecked(bool(self.cfg["overlay"].get("visible", True)))
+        self.overlay_check.toggled.connect(self._toggle_overlay)
+        checks.addWidget(self.overlay_check)
+        self.lock_check = QCheckBox("Lock")
+        self.lock_check.setChecked(bool(self.cfg["overlay"].get("locked")))
+        self.lock_check.toggled.connect(self._toggle_lock)
+        checks.addWidget(self.lock_check)
+        checks.addStretch()
         start_opacity = max(0.25, min(1.0, float(self.cfg["overlay"].get("opacity", 0.92))))
-        self.opacity_value = tk.Label(
-            opacity_row,
-            text=f"{int(round(start_opacity * 100))}%",
-            bg=theme.SURFACE,
-            fg=theme.GOLD,
-            font=theme.font(9, "bold"),
-        )
-        self.opacity_value.pack(side="right")
-        self.opacity_var = tk.DoubleVar(value=start_opacity * 100)
-        ttk.Scale(
-            settings,
-            from_=25,
-            to=100,
-            variable=self.opacity_var,
-            command=self._on_opacity,
-            style="Overlay.Horizontal.TScale",
-        ).pack(fill="x", pady=(6, 0))
+        self.opacity_value = QLabel(f"{int(round(start_opacity * 100))}%")
+        self.opacity_value.setStyleSheet(f"color: {theme.GOLD}; font-weight: 700; font-size: 12px;")
+        checks.addWidget(self.opacity_value)
+        footer.addLayout(checks)
 
-        btn_row = tk.Frame(settings, bg=theme.SURFACE)
-        btn_row.pack(fill="x", pady=(12, 0))
-        theme.button(btn_row, "Demo: Disruption", lambda: self._play_sample("sample_disruption.log")).pack(
-            side="left", padx=(0, 6)
-        )
-        theme.button(btn_row, "Demo: Survival", lambda: self._play_sample("sample_survival.log")).pack(side="left")
-        btn_row2 = tk.Frame(settings, bg=theme.SURFACE)
-        btn_row2.pack(fill="x", pady=(6, 0))
-        theme.button(btn_row2, "Open EE.log…", self._pick_log).pack(side="left", padx=(0, 6))
-        theme.button(btn_row2, "Rescan mission", self._rescan_mission).pack(side="left")
-        btn_row3 = tk.Frame(settings, bg=theme.SURFACE)
-        btn_row3.pack(fill="x", pady=(6, 0))
-        theme.button(btn_row3, "Report a bug", self._report_bug).pack(side="left", padx=(0, 6))
-        self.update_btn = theme.button(btn_row3, "Check for updates", self._check_for_updates)
-        self.update_btn.pack(side="left", padx=(0, 6))
-        theme.button(btn_row3, "GitHub", open_github).pack(side="left")
+        self.opacity_slider = QSlider(Qt.Orientation.Horizontal)
+        self.opacity_slider.setRange(25, 100)
+        self.opacity_slider.setValue(int(round(start_opacity * 100)))
+        self.opacity_slider.valueChanged.connect(self._on_opacity)
+        footer.addWidget(self.opacity_slider)
 
-        self.root.protocol("WM_DELETE_WINDOW", self._close)
-        self.root.after(1800, lambda: self._check_for_updates(quiet=True))
+        rescan = QPushButton("Rescan mission")
+        rescan.clicked.connect(self._rescan_mission)
+        footer.addWidget(rescan)
+        layout.addLayout(footer)
+
+        QTimer.singleShot(0, lambda: theme.round_corners(self))
+
+    def _show_menu(self) -> None:
+        menu = QMenu(self)
+        top = QAction("Main window always on top", self)
+        top.setCheckable(True)
+        top.setChecked(bool(self.cfg.get("always_on_top")))
+        top.toggled.connect(self._toggle_top)
+        menu.addAction(top)
+        menu.addSeparator()
+        menu.addAction("Demo: Disruption", lambda: self._play_sample("sample_disruption.log"))
+        menu.addAction("Demo: Survival", lambda: self._play_sample("sample_survival.log"))
+        menu.addAction("Open EE.log…", self._pick_log)
+        menu.addSeparator()
+        update_label = "Check for updates"
+        if self._latest_release and self._latest_release.newer:
+            update_label = f"Update to {self._latest_release.version}"
+        menu.addAction(update_label, lambda: self._check_for_updates(False))
+        menu.addAction("Report a bug…", self._report_bug)
+        menu.addAction("Open GitHub", open_github)
+        menu.addSeparator()
+        menu.addAction("About", lambda: show_about(self))
+        menu.exec(self.cursor().pos())
 
     def _start_watchers(self) -> None:
         log_path = Path(self.cfg.get("ee_log_path") or default_ee_log())
@@ -314,10 +348,6 @@ class TileReaderApp:
                     for event in item[1]:
                         if self.controller.handle(event):
                             changed = True
-                elif kind == "line":
-                    for event in self.parser.feed(item[1]):
-                        if self.controller.handle(event):
-                            changed = True
                 elif kind == "status":
                     self.controller.session.status = item[1]
                     changed = True
@@ -343,9 +373,8 @@ class TileReaderApp:
         self._overlay_pulse += 1
         if self._overlay_pulse >= 40:
             self._overlay_pulse = 0
-            if self.overlay and self.overlay_var.get():
+            if self.overlay and self.overlay_check.isChecked():
                 self.overlay.keep_on_top()
-        self.root.after(16, self._drain)
 
     def _refresh(self) -> None:
         session = self.controller.session
@@ -361,104 +390,31 @@ class TileReaderApp:
             bits.append(f"seed {mission.seed}")
         if mission.min_level and mission.max_level:
             bits.append(f"lv {mission.min_level}-{mission.max_level}")
-        self.mission_name.configure(text=name)
-        self.mission_meta.configure(text="  ·  ".join(bit for bit in bits if bit) or "Waiting…")
+        self.mission_name.setText(name)
+        self.mission_meta.setText("  ·  ".join(bit for bit in bits if bit) or "Waiting…")
 
         rec = grade.recommendation.value if isinstance(grade.recommendation, Recommendation) else str(grade.recommendation)
         rec_fg = theme.REC_COLORS.get(rec, theme.YELLOW)
         rec_bg = theme.REC_BG.get(rec, theme.WAIT_BG)
-        self.status_var.set(session.status)
-        self.status_pill.configure(text=session.status, fg=rec_fg, bg=rec_bg)
-        self.grade_letter.configure(text=grade.grade, fg=theme.GRADE_COLORS.get(grade.grade, theme.MUTED))
-        self.rec_label.configure(text=rec, fg=rec_fg, bg=rec_bg)
-        self.score_label.configure(text=f"Score {grade.score}" + (f"  ·  {grade.matched_layout}" if grade.matched_layout else ""))
-        self._render_reasons(grade.reasons)
-
+        grade_fg = theme.GRADE_COLORS.get(grade.grade, theme.MUTED)
+        self.status_label.setText(session.status.upper())
+        self.status_label.setStyleSheet(f"color: {rec_fg}; padding: 10px 0 12px 0; font-weight: 700; letter-spacing: 1.4px; font-size: 11px;")
+        self.grade_letter.setText(grade.grade)
+        self.grade_letter.setStyleSheet(f"color: {grade_fg};")
+        self.rec_label.setText(rec)
+        self.rec_label.setStyleSheet(
+            f"color: {rec_fg}; background: {rec_bg}; font-size: 13px; font-weight: 700; "
+            f"letter-spacing: 3px; padding: 8px;"
+        )
+        extra = f"  ·  {grade.matched_layout}" if grade.matched_layout else ""
+        self.score_label.setText(f"Score {grade.score}{extra}")
+        reasons = grade.reasons or ["No grade yet."]
+        self.reasons_label.setText("\n".join(f"·  {item}" for item in reasons[:4]))
+        self.tracker_text.setText(self._tracker_summary())
+        self._sync_rooms()
         tiles = session.layout.short_names()
-        extra = f"segments {session.layout.segments}" if session.layout.segments else session.layout.source
-        self.layout_label.configure(text=extra or "No rooms identified.")
-        self._render_tiles(session.layout.tiles)
-
-        self.tracker_text.configure(text=self._tracker_summary())
-        self._sync_picker()
-        self.overlay.update_view(mission, grade, session.layout.intermediate_names() or tiles, session.status)
-
-    def _render_reasons(self, reasons: list[str]) -> None:
-        key = "\n".join(reasons)
-        if key == self._reason_key:
-            return
-        self._reason_key = key
-        for child in self.reasons_frame.winfo_children():
-            child.destroy()
-        items = reasons or ["No grade yet."]
-        for reason in items:
-            row = tk.Frame(self.reasons_frame, bg=theme.SURFACE)
-            row.pack(fill="x", pady=2)
-            tk.Frame(row, bg=theme.GOLD_DIM, width=2).pack(side="left", fill="y", padx=(0, 10))
-            tk.Label(
-                row,
-                text=reason,
-                bg=theme.SURFACE,
-                fg=theme.TEXT,
-                font=theme.font(10),
-                anchor="w",
-                justify="left",
-                wraplength=520,
-            ).pack(side="left", fill="x", expand=True)
-
-    def _render_tiles(self, tiles: list[Tile]) -> None:
-        key = tuple((tile.role, tile.short_name) for tile in tiles)
-        if key == self._tile_key:
-            return
-        self._tile_key = key
-        for child in self.tile_frame.winfo_children():
-            child.destroy()
-        if not tiles:
-            tk.Label(
-                self.tile_frame,
-                text="Rooms will appear here as the mission loads.",
-                bg=theme.SURFACE,
-                fg=theme.MUTED,
-                font=theme.font(10),
-                anchor="w",
-            ).pack(fill="x")
-            return
-        for index, tile in enumerate(tiles):
-            bg = theme.ELEVATED if index % 2 == 0 else theme.SURFACE
-            row = tk.Frame(self.tile_frame, bg=bg)
-            row.pack(fill="x", pady=1)
-            tk.Label(
-                row,
-                text=tile.role,
-                bg=bg,
-                fg=theme.GOLD,
-                font=theme.font(8, "bold"),
-                width=8,
-                padx=8,
-                pady=5,
-            ).pack(side="left")
-            tk.Label(
-                row,
-                text=tile.short_name,
-                bg=bg,
-                fg=theme.TEXT,
-                font=(theme.FONT_MONO, 10),
-                anchor="w",
-                padx=8,
-            ).pack(side="left", fill="x", expand=True)
-
-    def _on_opacity(self, _value: str | None = None) -> None:
-        alpha = max(0.25, min(1.0, float(self.opacity_var.get()) / 100.0))
-        self.cfg["overlay"]["opacity"] = round(alpha, 2)
-        self.opacity_value.configure(text=f"{int(round(alpha * 100))}%")
         if self.overlay:
-            self.overlay.set_opacity(alpha)
-        if self._opacity_save_job:
-            try:
-                self.root.after_cancel(self._opacity_save_job)
-            except tk.TclError:
-                pass
-        self._opacity_save_job = self.root.after(400, lambda: save_config(self.cfg))
+            self.overlay.update_view(mission, grade, session.layout.intermediate_names() or tiles, session.status)
 
     def _tracker_summary(self) -> str:
         session = self.controller.session
@@ -466,190 +422,172 @@ class TileReaderApp:
             run = session.disruption
             if not run or not run.rounds:
                 toxin = "  ·  toxin" if run and run.toxin else ""
-                return f"Disruption ready{toxin}. Waiting for round 1."
+                return f"Disruption ready{toxin}"
             current = run.current_round
             last = current.duration() if current and current.finished_at else 0
             keys = len(current.key_inserts) if current else 0
             demos = len(current.demo_kills) if current else 0
-            return (
-                f"Round {current.number if current else 0}  ·  keys {keys}/4  ·  demos {demos}\n"
-                f"Artifacts {run.total_artifacts}  ·  last round {last:.0f}s"
-                + ("  ·  TOXIN" if run.toxin else "")
-            )
+            toxin = "  ·  TOXIN" if run.toxin else ""
+            return f"Round {current.number if current else 0}  ·  keys {keys}/4  ·  demos {demos}{toxin}"
         if session.mission.kind == MissionKind.SURVIVAL:
             if session.survival.good_tile_found:
-                return f"Good farm room found: {session.survival.good_tile_name}"
-            return "Survival: looking for the catalog farm room."
-        return "No Disruption / Survival run in progress."
+                return f"Farm room: {session.survival.good_tile_name}"
+            return "Survival · looking for the farm room"
+        return "No Disruption / Survival run"
 
-    def _sync_picker(self) -> None:
+    def _sync_rooms(self) -> None:
         mission = self.controller.session.mission
         catalog = self.store.catalog_for(mission.node_id, mission.kind, mission.level_override)
         key = catalog.key if catalog else ""
+        matched: set[str] = set()
+        if catalog:
+            for tile in self.controller.session.layout.tiles:
+                room = catalog.match_tile(tile.short_name)
+                if room:
+                    matched.add(room.id.lower())
         if self._picker_force or key != self._picker_key:
             self._picker_force = False
             self._picker_key = key
-            self._rebuild_picker()
-            self._rebuild_guide()
+            self._selected_rooms = matched
+            self._rebuild_rooms(catalog)
             return
-        if not catalog or not self.room_vars:
-            return
-        matched = set()
-        for tile in self.controller.session.layout.tiles:
-            room = catalog.match_tile(tile.short_name)
-            if room:
-                matched.add(room.id.lower())
-        self._ignore_picker = True
-        try:
-            for room_id, var in self.room_vars.items():
-                want = room_id.lower() in matched
-                if var.get() != want:
-                    var.set(want)
-        finally:
-            self._ignore_picker = False
+        if matched != self._selected_rooms:
+            self._selected_rooms = matched
+            self._rebuild_rooms(catalog)
 
-    def _rebuild_picker(self) -> None:
-        mission = self.controller.session.mission
-        catalog = self.store.catalog_for(mission.node_id, mission.kind, mission.level_override)
-        for child in self.picker_frame.winfo_children():
-            child.destroy()
-        self.room_vars = {}
+    def _rebuild_rooms(self, catalog) -> None:
+        while self.rooms_layout.count():
+            item = self.rooms_layout.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.deleteLater()
+        self._room_cards = {}
         if not catalog:
-            tk.Label(
-                self.picker_frame,
-                text="No room catalog for this node yet.",
-                bg=theme.SURFACE,
-                fg=theme.MUTED,
-                font=theme.font(9),
-                wraplength=300,
-                justify="left",
-            ).pack(anchor="w")
-            return
-        selected = {tile.short_name.lower() for tile in self.controller.session.layout.tiles}
-        rejected = {item.lower() for item in self.cfg.get("rejected_tiles", {}).get(catalog.key, [])}
-        for index, room in enumerate(catalog.rooms):
-            bg = theme.ELEVATED if index % 2 == 0 else theme.SURFACE
-            row = tk.Frame(self.picker_frame, bg=bg)
-            row.pack(fill="x", pady=1)
-            var = tk.BooleanVar(value=room.id.lower() in selected or room.display.lower() in selected)
-            self.room_vars[room.id] = var
-            tk.Checkbutton(
-                row,
-                text=f"{room.display}  ({room.score:+d})",
-                variable=var,
-                command=self._manual_tiles_changed,
-                bg=bg,
-                fg=theme.RED if room.id.lower() in rejected else theme.TEXT,
-                selectcolor=theme.SURFACE_2,
-                activebackground=bg,
-                activeforeground=theme.TEXT,
-                font=theme.font(9),
-                anchor="w",
-                bd=0,
-                highlightthickness=0,
-                cursor="hand2",
-            ).pack(side="left", fill="x", expand=True, padx=4, pady=2)
-            reject_var = tk.BooleanVar(value=room.id.lower() in rejected)
-            tk.Checkbutton(
-                row,
-                text="reject",
-                variable=reject_var,
-                command=lambda rid=room.id, rv=reject_var, key=catalog.key: self._toggle_reject(key, rid, rv.get()),
-                bg=bg,
-                fg=theme.MUTED,
-                selectcolor=theme.SURFACE_2,
-                activebackground=bg,
-                font=theme.font(8),
-                bd=0,
-                highlightthickness=0,
-                cursor="hand2",
-            ).pack(side="right", padx=4)
-
-    def _rebuild_guide(self) -> None:
-        mission = self.controller.session.mission
-        catalog = self.store.catalog_for(mission.node_id, mission.kind, mission.level_override)
-        for child in self.guide_frame.winfo_children():
-            child.destroy()
-        if not catalog:
-            tk.Label(
-                self.guide_frame,
-                text="Queue a Disruption or Survival node to see its room guide.",
-                bg=theme.SURFACE,
-                fg=theme.MUTED,
-                font=theme.font(9),
-                wraplength=300,
-                justify="left",
-            ).pack(anchor="w")
+            empty = QLabel("Queue a Disruption or Survival node to see its rooms.")
+            empty.setWordWrap(True)
+            empty.setStyleSheet(f"color: {theme.MUTED}; font-size: 12px;")
+            self.rooms_layout.addWidget(empty)
+            self.rooms_layout.addStretch()
             return
         if catalog.notes:
-            tk.Label(
-                self.guide_frame,
-                text=catalog.notes,
-                bg=theme.SURFACE,
-                fg=theme.MUTED,
-                font=theme.font(9),
-                wraplength=300,
-                justify="left",
-            ).pack(anchor="w", pady=(0, 8))
+            notes = QLabel(catalog.notes)
+            notes.setWordWrap(True)
+            notes.setStyleSheet(f"color: {theme.MUTED}; font-size: 11px;")
+            self.rooms_layout.addWidget(notes)
+        rejected = {item.lower() for item in self.cfg.get("rejected_tiles", {}).get(catalog.key, [])}
         if not catalog.rooms:
-            tk.Label(
-                self.guide_frame,
-                text="No named rooms in this catalog yet. Auto-scan will save new names when the log still prints them.",
-                bg=theme.SURFACE,
-                fg=theme.MUTED,
-                font=theme.font(9),
-                wraplength=300,
-                justify="left",
-            ).pack(anchor="w")
-            return
-        for index, room in enumerate(catalog.rooms):
-            bg = theme.ELEVATED if index % 2 == 0 else theme.SURFACE_2
-            card = tk.Frame(self.guide_frame, bg=bg)
-            card.pack(fill="x", pady=3)
-            header = tk.Frame(card, bg=bg)
-            header.pack(fill="x", padx=8, pady=(8, 0))
-            tk.Label(header, text=room.display, bg=bg, fg=theme.TEXT, font=theme.font(10, "bold"), anchor="w").pack(
-                side="left"
+            empty = QLabel("No named rooms in this catalog yet.")
+            empty.setWordWrap(True)
+            empty.setStyleSheet(f"color: {theme.MUTED}; font-size: 12px;")
+            self.rooms_layout.addWidget(empty)
+        for room in catalog.rooms:
+            card = RoomCard(
+                room,
+                selected=room.id.lower() in self._selected_rooms,
+                rejected=room.id.lower() in rejected,
+                on_toggle=lambda rid=room.id: self._on_room_clicked(rid),
+                on_reject=lambda rid=room.id, key=catalog.key: self._toggle_reject(key, rid),
             )
-            score_fg = theme.GREEN if room.score > 0 else theme.RED if room.score < 0 else theme.MUTED
-            tk.Label(header, text=f"{room.score:+d}", bg=bg, fg=score_fg, font=theme.font(9, "bold")).pack(side="right")
-            body = room.looks or room.notes or "No landmark notes yet."
-            tk.Label(
-                card,
-                text=body,
-                bg=bg,
-                fg=theme.MUTED,
-                font=theme.font(9),
-                wraplength=280,
-                justify="left",
-                anchor="w",
-            ).pack(fill="x", padx=8, pady=(2, 8))
+            self._room_cards[room.id] = card
+            self.rooms_layout.addWidget(card)
+        self.rooms_layout.addStretch()
 
-    def _manual_tiles_changed(self) -> None:
-        if self._ignore_picker:
-            return
-        names = [room_id for room_id, var in self.room_vars.items() if var.get()]
+    def _on_room_clicked(self, room_id: str) -> None:
+        needle = room_id.lower()
+        if needle in self._selected_rooms:
+            self._selected_rooms.discard(needle)
+        else:
+            self._selected_rooms.add(needle)
+        names = [rid for rid in self._room_cards if rid.lower() in self._selected_rooms]
         self.controller.set_manual_tiles(names)
+        self._picker_force = True
         self._refresh()
 
-    def _toggle_reject(self, catalog_key: str, room_id: str, enabled: bool) -> None:
+    def _toggle_reject(self, catalog_key: str, room_id: str) -> None:
         bucket = self.cfg.setdefault("rejected_tiles", {}).setdefault(catalog_key, [])
-        if enabled and room_id not in bucket:
-            bucket.append(room_id)
-        if not enabled and room_id in bucket:
+        if room_id in bucket:
             bucket.remove(room_id)
+        else:
+            bucket.append(room_id)
         save_config(self.cfg)
         self._picker_force = True
         self.controller._regrade()
         self._refresh()
 
+    def _on_opacity(self, value: int) -> None:
+        alpha = max(0.25, min(1.0, value / 100.0))
+        self.cfg["overlay"]["opacity"] = round(alpha, 2)
+        self.opacity_value.setText(f"{int(round(alpha * 100))}%")
+        if self.overlay:
+            self.overlay.set_opacity(alpha)
+        if self._opacity_save_job:
+            self._opacity_save_job.stop()
+        self._opacity_save_job = QTimer(self)
+        self._opacity_save_job.setSingleShot(True)
+        self._opacity_save_job.timeout.connect(lambda: save_config(self.cfg))
+        self._opacity_save_job.start(400)
+
+    def _toggle_overlay(self, visible: bool) -> None:
+        self.cfg["overlay"]["visible"] = visible
+        save_config(self.cfg)
+        if self.overlay:
+            self.overlay.set_visible(visible)
+            if visible:
+                self.overlay.keep_on_top()
+
+    def _toggle_lock(self, locked: bool) -> None:
+        self.cfg["overlay"]["locked"] = locked
+        save_config(self.cfg)
+        if self.overlay:
+            self.overlay.set_locked(locked)
+
+    def _toggle_top(self, value: bool) -> None:
+        self.cfg["always_on_top"] = value
+        save_config(self.cfg)
+        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, value)
+        self.show()
+
+    def _save_overlay_pos(self, x: int, y: int) -> None:
+        self.cfg["overlay"]["x"] = x
+        self.cfg["overlay"]["y"] = y
+        save_config(self.cfg)
+
+    def _play_sample(self, name: str) -> None:
+        path = sample_dir() / name
+        if not path.exists():
+            QMessageBox.critical(self, "Missing sample", f"Could not find {path}")
+            return
+        self.parser.reset()
+        self.controller.session.reset_mission()
+        self._picker_force = True
+        for line in path.read_text(encoding="utf-8").splitlines(True):
+            for event in self.parser.feed(line):
+                self.controller.handle(event)
+        self.controller.session.status = f"Demo replay: {name}"
+        self._refresh()
+
+    def _pick_log(self) -> None:
+        chosen, _ = QFileDialog.getOpenFileName(self, "Select EE.log", "", "Log files (*.log);;All files (*.*)")
+        if not chosen:
+            return
+        self.cfg["ee_log_path"] = chosen
+        self.cfg["read_from_end"] = False
+        save_config(self.cfg)
+        if self.watcher:
+            self.watcher.stop()
+        self.parser.reset()
+        self.controller.session.reset_mission()
+        self._picker_force = True
+        self._start_watchers()
+        self._refresh()
+
     def _rescan_mission(self) -> None:
         path = Path(self.cfg.get("ee_log_path") or default_ee_log())
         if not path.exists():
-            messagebox.showerror("No log", f"Could not find {path}")
+            QMessageBox.critical(self, "No log", f"Could not find {path}")
             return
         self.controller.session.status = "Rescanning current mission from EE.log…"
-        self.status_pill.configure(text="Rescanning…", fg=theme.YELLOW, bg=theme.WAIT_BG)
+        self.status_label.setText("RESCANNING")
 
         def worker() -> None:
             try:
@@ -669,75 +607,6 @@ class TileReaderApp:
         self.controller.session.status = "Rescanned the latest mission in EE.log"
         self._refresh()
 
-    def _toggle_overlay(self) -> None:
-        visible = self.overlay_var.get()
-        self.cfg["overlay"]["visible"] = visible
-        save_config(self.cfg)
-        if self.overlay:
-            self.overlay.set_visible(visible)
-            if visible:
-                self.overlay.keep_on_top()
-
-    def _toggle_lock(self) -> None:
-        locked = self.overlay_lock_var.get()
-        self.cfg["overlay"]["locked"] = locked
-        save_config(self.cfg)
-        self.overlay.set_locked(locked)
-
-    def _toggle_top(self) -> None:
-        value = self.top_var.get()
-        self.cfg["always_on_top"] = value
-        save_config(self.cfg)
-        self.root.attributes("-topmost", value)
-
-    def _save_overlay_pos(self, x: int, y: int) -> None:
-        self.cfg["overlay"]["x"] = x
-        self.cfg["overlay"]["y"] = y
-        save_config(self.cfg)
-
-    def _play_sample(self, name: str) -> None:
-        path = sample_dir() / name
-        if not path.exists():
-            messagebox.showerror("Missing sample", f"Could not find {path}")
-            return
-        self.parser.reset()
-        self.controller.session.reset_mission()
-        self._picker_force = True
-        for line in path.read_text(encoding="utf-8").splitlines(True):
-            for event in self.parser.feed(line):
-                self.controller.handle(event)
-        self.controller.session.status = f"Demo replay: {name}"
-        self._refresh()
-
-    def _pick_log(self) -> None:
-        chosen = filedialog.askopenfilename(title="Select EE.log", filetypes=[("Log files", "*.log"), ("All files", "*.*")])
-        if not chosen:
-            return
-        self.cfg["ee_log_path"] = chosen
-        self.cfg["read_from_end"] = False
-        save_config(self.cfg)
-        if self.watcher:
-            self.watcher.stop()
-        self.parser.reset()
-        self.controller.session.reset_mission()
-        self._picker_force = True
-        self._start_watchers()
-        self._refresh()
-
-    def _replay_log(self) -> None:
-        path = Path(self.cfg.get("ee_log_path") or default_ee_log())
-        if not path.exists():
-            messagebox.showerror("No log", f"Could not find {path}")
-            return
-        self.parser.reset()
-        self.controller.session.reset_mission()
-        self._picker_force = True
-        for line in path.read_text(encoding="utf-8", errors="replace").splitlines(True):
-            for event in self.parser.feed(line):
-                self.controller.handle(event)
-        self.controller.session.status = f"Replayed {path.name}"
-        self._refresh()
-
     def _check_for_updates(self, quiet: bool = False) -> None:
         if self._update_busy:
             return
@@ -745,8 +614,7 @@ class TileReaderApp:
             self._prompt_update(self._latest_release)
             return
         self._update_busy = True
-        if not quiet:
-            self.update_btn.configure(text="Checking…")
+        self.version_chip.setText("checking…")
 
         def worker() -> None:
             try:
@@ -769,44 +637,36 @@ class TileReaderApp:
             self._prompt_update(release)
             return
         if not quiet:
-            messagebox.showinfo(
-                "Up to date",
-                f"{APP_NAME} {VERSION} is the latest release.",
-                parent=self.root,
-            )
+            QMessageBox.information(self, "Up to date", f"{APP_NAME} {VERSION} is the latest release.")
 
     def _on_update_error(self, message: str, quiet: bool) -> None:
         self._update_busy = False
-        if getattr(self, "_progress_win", None):
-            try:
-                self._progress_win.destroy()
-            except tk.TclError:
-                pass
-            self._progress_win = None
+        if self._progress:
+            self._progress.close()
+            self._progress = None
         available = bool(self._latest_release and self._latest_release.newer)
         self._show_update_available(available)
         if not quiet:
-            messagebox.showerror("Update failed", message, parent=self.root)
+            QMessageBox.critical(self, "Update failed", message)
 
     def _show_update_available(self, available: bool) -> None:
         if available and self._latest_release:
-            label = f"v{VERSION} · update {self._latest_release.version}"
-            self.version_chip.configure(text=label, bg=theme.GOLD, fg=theme.BG)
-            self.update_btn.configure(text=f"Update to {self._latest_release.version}")
+            self.version_chip.setText(f"v{VERSION} · {self._latest_release.version}")
+            self.version_chip.setStyleSheet(f"color: {theme.BG}; background: {theme.GOLD}; border: none; padding: 4px 8px;")
         else:
-            self.version_chip.configure(text=f"v{VERSION}", bg=theme.ELEVATED, fg=theme.MUTED)
-            self.update_btn.configure(text="Check for updates")
+            self.version_chip.setText(f"v{VERSION}")
+            self.version_chip.setStyleSheet("")
 
     def _prompt_update(self, release: ReleaseInfo) -> None:
         summary = format_release_summary(release)
-        ok = messagebox.askyesno(
+        reply = QMessageBox.question(
+            self,
             "Update available",
             f"{APP_NAME} {release.version} is available (you have {VERSION}).\n\n"
             f"{summary}\n\n"
             "Download and install now? The app will close, then reopen.",
-            parent=self.root,
         )
-        if ok:
+        if reply == QMessageBox.StandardButton.Yes:
             self._start_update(release)
 
     def _start_update(self, release: ReleaseInfo) -> None:
@@ -814,7 +674,18 @@ class TileReaderApp:
             return
         self._update_busy = True
         dest = Path(tempfile.gettempdir()) / "TilesRUs-Setup.exe"
-        self._open_progress(f"Downloading {APP_NAME} {release.version}…")
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f"Downloading {APP_NAME} {release.version}")
+        dlg.setModal(True)
+        box = QVBoxLayout(dlg)
+        label = QLabel(f"Downloading {APP_NAME} {release.version}…")
+        box.addWidget(label)
+        self._progress_label = QLabel("Starting…")
+        self._progress_label.setStyleSheet(f"color: {theme.MUTED};")
+        box.addWidget(self._progress_label)
+        dlg.resize(420, 120)
+        self._progress = dlg
+        dlg.show()
 
         def worker() -> None:
             try:
@@ -829,62 +700,46 @@ class TileReaderApp:
 
         threading.Thread(target=worker, name="TilesRUsUpdateDownload", daemon=True).start()
 
-    def _open_progress(self, title: str) -> None:
-        win = tk.Toplevel(self.root)
-        win.title(title)
-        win.configure(bg=theme.BG)
-        win.geometry("420x120")
-        win.transient(self.root)
-        win.resizable(False, False)
-        tk.Label(win, text=title, bg=theme.BG, fg=theme.TEXT, font=theme.font(11, "bold")).pack(padx=18, pady=(18, 8))
-        self._progress_label = tk.Label(win, text="Starting…", bg=theme.BG, fg=theme.MUTED, font=theme.font(9))
-        self._progress_label.pack(padx=18)
-        self._progress_win = win
-        win.protocol("WM_DELETE_WINDOW", lambda: None)
-
     def _on_update_progress(self, done: int, total: int) -> None:
-        if not getattr(self, "_progress_label", None):
+        if not self._progress_label:
             return
         if total > 0:
             pct = min(100, int(done * 100 / total))
-            self._progress_label.configure(text=f"{pct}%  ·  {done // 1024} KB / {total // 1024} KB")
+            self._progress_label.setText(f"{pct}%  ·  {done // 1024} KB / {total // 1024} KB")
         else:
-            self._progress_label.configure(text=f"{done // 1024} KB downloaded")
+            self._progress_label.setText(f"{done // 1024} KB downloaded")
 
     def _on_update_ready(self, setup_path: Path) -> None:
         self._update_busy = False
-        if getattr(self, "_progress_win", None):
-            try:
-                self._progress_win.destroy()
-            except tk.TclError:
-                pass
-            self._progress_win = None
+        if self._progress:
+            self._progress.close()
+            self._progress = None
         try:
             launch_installer_and_relaunch(setup_path)
         except Exception as exc:
-            messagebox.showerror("Update failed", str(exc), parent=self.root)
+            QMessageBox.critical(self, "Update failed", str(exc))
             return
-        self._close()
+        self.close()
 
     def _report_bug(self) -> None:
-        show_bug_dialog(self.root, self.controller.session)
+        show_bug_dialog(self, self.controller.session)
 
-    def _close(self) -> None:
+    def closeEvent(self, event) -> None:  # type: ignore[override]
         if self.watcher:
             self.watcher.stop()
         if self.shots:
             self.shots.stop()
-        if self._opacity_save_job:
-            try:
-                self.root.after_cancel(self._opacity_save_job)
-            except tk.TclError:
-                pass
         save_config(self.cfg)
         self.store.flush_discovered()
-        self.root.destroy()
+        if self.overlay:
+            self.overlay.close()
+        event.accept()
 
 
 def run() -> None:
-    root = tk.Tk()
-    TileReaderApp(root)
-    root.mainloop()
+    app = QApplication.instance() or QApplication([])
+    app.setApplicationName(APP_NAME)
+    theme.apply(app)
+    window = Companion()
+    window.show()
+    app.exec()
